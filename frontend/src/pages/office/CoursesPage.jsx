@@ -1,16 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Library } from "lucide-react";
+import { Library, Search } from "lucide-react";
 import api, { errMsg } from "../../api/client";
-import { Card, DataTable, Cell, NumCell, Row, Badge, Spinner, Alert, Button } from "../../components/ui";
+import { Card, DataTable, Cell, NumCell, Row, Badge, Spinner, Alert, Button, Pagination } from "../../components/ui";
 import { INPUT_CLS, LABEL_CLS } from "../../utils/forms";
 
 const EMPTY = { code: "", name: "", credits: 3, counted_in_gpa: true, prerequisite_course_ids: [] };
+const PAGE_SIZE = 10;
 
 export default function OfficeCoursesPage() {
   const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [courses, setCourses] = useState([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  // Toàn bộ học phần (không phân trang) — nguồn checkbox tiên quyết khi thêm/sửa
+  const [allCourses, setAllCourses] = useState([]);
+  const [search, setSearch] = useState(""); // nội dung ô nhập
+  const [appliedSearch, setAppliedSearch] = useState(""); // từ khóa đang áp dụng cho danh sách hiện tại
   const [form, setForm] = useState(EMPTY);
   const [showForm, setShowForm] = useState(() => location.state?.form === 1);
   // Dòng đang sửa — null = chế độ thêm mới
@@ -19,17 +27,38 @@ export default function OfficeCoursesPage() {
   const [confirmId, setConfirmId] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // Tăng dần mỗi lần gọi API — response của request cũ về sau bị bỏ qua
+  const reqId = useRef(0);
 
-  const load = async () => {
-    const { data } = await api.get("/courses");
-    setCourses(data);
+  // Server-side pagination: chỉ tải đúng các bản ghi của trang hiện tại, không filter/slice ở frontend.
+  // Trả về true nếu response được áp dụng (false = request cũ bị bỏ qua).
+  const load = async (pageNum, q = "") => {
+    const id = ++reqId.current;
+    const { data } = await api.get("/courses", {
+      params: { page: pageNum, size: PAGE_SIZE, ...(q ? { search: q } : {}) },
+    });
+    if (id !== reqId.current) return false;
+    setCourses(data.data);
+    setPage(data.page);
+    setTotalPages(data.totalPages);
+    setTotalElements(data.totalElements);
+    return true;
   };
 
   useEffect(() => {
-    load()
+    load(0, "")
       .catch((e) => setError(errMsg(e)))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Danh sách checkbox tiên quyết dùng TOÀN BỘ học phần (không chỉ trang hiện tại).
+  // Tải mỗi lần mở form để dữ liệu luôn mới.
+  const loadAllCourses = () =>
+    api
+      .get("/courses/all")
+      .then(({ data }) => setAllCourses(data))
+      .catch((e) => setError(errMsg(e)));
 
   // Nút "+ Thêm học phần" ở header là Link cùng route với state { form: 1 } —
   // bấm khi đang ở sẵn trang này không remount component nên phải theo dõi
@@ -40,9 +69,22 @@ export default function OfficeCoursesPage() {
       setConfirmId(null);
       setForm(EMPTY);
       setShowForm(true);
+      loadAllCourses();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
+
+  // Tìm kiếm: luôn quay về trang đầu với từ khóa mới
+  const applySearch = () => {
+    const q = search;
+    load(0, q)
+      .then((applied) => {
+        if (applied) setAppliedSearch(q);
+      })
+      .catch((e) => setError(errMsg(e)));
+  };
+
+  const goPage = (p) => load(p, appliedSearch).catch((e) => setError(errMsg(e)));
 
   const closeForm = () => {
     setShowForm(false);
@@ -50,7 +92,7 @@ export default function OfficeCoursesPage() {
     setForm(EMPTY);
   };
 
-  // Nạp dữ liệu dòng vào form và mở chế độ sửa
+  // Nạp dữ liệu dòng vào form và mở chế độ sửa, kèm danh sách tiên quyết mới nhất
   const startEdit = (c) => {
     setError("");
     setEditing(c);
@@ -63,6 +105,7 @@ export default function OfficeCoursesPage() {
     });
     setShowForm(true);
     setConfirmId(null);
+    loadAllCourses();
   };
 
   const doDelete = async (id) => {
@@ -72,7 +115,7 @@ export default function OfficeCoursesPage() {
       await api.delete(`/courses/${id}`);
       setSuccess("Đã xóa học phần");
       setConfirmId(null);
-      await load();
+      await load(page, appliedSearch);
     } catch (err) {
       setError(errMsg(err));
       setConfirmId(null);
@@ -108,21 +151,20 @@ export default function OfficeCoursesPage() {
         setForm(EMPTY);
         setShowForm(false);
       }
-      await load();
+      await load(page, appliedSearch);
     } catch (err) {
       setError(errMsg(err));
     }
   };
 
-  // Danh sách checkbox tiên quyết — khi sửa thì loại chính học phần đang sửa
-  const prereqOptions = editing ? courses.filter((c) => c.id !== editing.id) : courses;
+  const prereqOptions = editing ? allCourses.filter((c) => c.id !== editing.id) : allCourses;
 
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-secondary num">
-        {courses.length} học phần · học phần tiên quyết được hệ thống kiểm tra tự động khi sinh viên đăng ký.
+        {totalElements} học phần · học phần tiên quyết được hệ thống kiểm tra tự động khi sinh viên đăng ký.
       </p>
       {error && (
         <Alert kind="error" onClose={() => setError("")}>
@@ -134,6 +176,25 @@ export default function OfficeCoursesPage() {
           {success}
         </Alert>
       )}
+
+      <div className="flex gap-2">
+        <div className="relative">
+          <Search
+            size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary pointer-events-none"
+          />
+          <input
+            className={`${INPUT_CLS} pl-9 w-72 max-w-full`}
+            placeholder="Tìm theo mã hoặc tên học phần…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && applySearch()}
+          />
+        </div>
+        <Button variant="secondary" onClick={applySearch}>
+          Tìm
+        </Button>
+      </div>
 
       {showForm && (
         <Card
@@ -217,9 +278,13 @@ export default function OfficeCoursesPage() {
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <Library size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
-              <p className="text-sm font-medium">Chưa có học phần nào.</p>
+              <p className="text-sm font-medium">
+                {appliedSearch ? `Không tìm thấy học phần khớp "${appliedSearch}".` : "Chưa có học phần nào."}
+              </p>
               <p className="text-sm text-secondary mt-1">
-                Bấm “Thêm học phần” ở góc trên bên phải để tạo học phần đầu tiên.
+                {appliedSearch
+                  ? "Thử từ khóa khác hoặc xóa ô tìm kiếm."
+                  : "Bấm “Thêm học phần” ở góc trên bên phải để tạo học phần đầu tiên."}
               </p>
             </div>
           }
@@ -263,6 +328,7 @@ export default function OfficeCoursesPage() {
             </Row>
           )}
         />
+        <Pagination page={page} totalPages={totalPages} onPageChange={goPage} />
       </Card>
     </div>
   );

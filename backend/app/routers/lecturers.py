@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth_dependency import require_role
 from app.models import CourseClass, HomeroomClass, Lecturer
-from app.schemas.lecturer import LecturerCreate, LecturerOut, LecturerUpdate
+from app.schemas.lecturer import LecturerCreate, LecturerOut, LecturerPage, LecturerUpdate
 from app.services.user_service import create_user_account
 
 router = APIRouter(prefix="/lecturers", tags=["Giảng viên"])
@@ -18,11 +18,42 @@ def _get_lecturer_or_404(db: Session, lecturer_id: int) -> Lecturer:
     return lecturer
 
 
-@router.get("", response_model=list[LecturerOut])
+@router.get("", response_model=LecturerPage)
 def list_lecturers(
+    search: str | None = None,
+    department: str | None = None,
+    page: int = Query(0, ge=0),
+    size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office", "advisor", "lecturer")),
 ):
+    """Danh sách giảng viên phân trang phía server — chỉ query đúng các bản ghi của trang hiện tại."""
+    stmt = select(Lecturer)
+    if department:
+        stmt = stmt.where(Lecturer.department == department)
+    if search:
+        keyword = f"%{search.strip()}%"
+        stmt = stmt.where(or_(Lecturer.name.ilike(keyword), Lecturer.code.ilike(keyword)))
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    lecturers = (
+        db.scalars(stmt.order_by(Lecturer.code).offset(page * size).limit(size)).all()
+    )
+    return LecturerPage(
+        data=lecturers,
+        page=page,
+        size=size,
+        totalElements=total,
+        totalPages=(total + size - 1) // size,
+    )
+
+
+@router.get("/all", response_model=list[LecturerOut])
+def list_all_lecturers(
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("training_office", "advisor", "lecturer")),
+):
+    """Toàn bộ giảng viên (không phân trang) — chỉ dùng cho dropdown/select của form."""
     return db.scalars(select(Lecturer).order_by(Lecturer.code)).all()
 
 

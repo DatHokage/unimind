@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.dependencies.auth_dependency import (
@@ -12,6 +12,7 @@ from app.models import HomeroomClass, Lecturer, Major, Student
 from app.schemas.homeroom_class import (
     HomeroomClassCreate,
     HomeroomClassOut,
+    HomeroomClassPage,
     HomeroomClassUpdate,
 )
 from app.schemas.student import StudentOut
@@ -33,11 +34,70 @@ def _homeroom_out(db: Session, hc: HomeroomClass) -> HomeroomClassOut:
     )
 
 
-@router.get("", response_model=list[HomeroomClassOut])
+@router.get("", response_model=HomeroomClassPage)
 def list_homeroom_classes(
+    search: str | None = None,
+    major_id: int | None = None,
+    cohort: int | None = None,
+    page: int = Query(0, ge=0),
+    size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office")),
 ):
+    """Danh sách lớp hành chính phân trang phía server — chỉ query đúng các bản ghi của trang hiện tại."""
+    stmt = select(HomeroomClass)
+    if major_id is not None:
+        stmt = stmt.where(HomeroomClass.major_id == major_id)
+    if cohort is not None:
+        stmt = stmt.where(HomeroomClass.cohort == cohort)
+    if search:
+        keyword = f"%{search.strip()}%"
+        stmt = stmt.where(HomeroomClass.name.ilike(keyword))
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    hcs = db.scalars(
+        stmt.options(joinedload(HomeroomClass.major), joinedload(HomeroomClass.advisor))
+        .order_by(HomeroomClass.name, HomeroomClass.id)
+        .offset(page * size)
+        .limit(size)
+    ).all()
+    # Số sinh viên của từng lớp trong trang: 1 query group by thay vì N query lẻ
+    counts: dict[int, int] = {}
+    if hcs:
+        counts = dict(
+            db.execute(
+                select(Student.class_id, func.count(Student.id))
+                .where(Student.class_id.in_([hc.id for hc in hcs]))
+                .group_by(Student.class_id)
+            ).all()
+        )
+    return HomeroomClassPage(
+        data=[
+            HomeroomClassOut(
+                id=hc.id,
+                name=hc.name,
+                major_id=hc.major_id,
+                major_name=hc.major.name if hc.major else None,
+                cohort=hc.cohort,
+                advisor_id=hc.advisor_id,
+                advisor_name=hc.advisor.name if hc.advisor else None,
+                student_count=counts.get(hc.id, 0),
+            )
+            for hc in hcs
+        ],
+        page=page,
+        size=size,
+        totalElements=total,
+        totalPages=(total + size - 1) // size,
+    )
+
+
+@router.get("/all", response_model=list[HomeroomClassOut])
+def list_all_homeroom_classes(
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("training_office")),
+):
+    """Toàn bộ lớp hành chính (không phân trang) — chỉ dùng cho dropdown/select của form."""
     hcs = db.scalars(select(HomeroomClass).order_by(HomeroomClass.name)).all()
     return [_homeroom_out(db, hc) for hc in hcs]
 

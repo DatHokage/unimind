@@ -1,6 +1,6 @@
 import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -20,6 +20,12 @@ class HomeroomClass(Base):
     major: Mapped["Major | None"] = relationship()
     advisor: Mapped["Lecturer | None"] = relationship(back_populates="advised_classes")
     students: Mapped[list["Student"]] = relationship(back_populates="homeroom_class")
+
+    # Index hỗ trợ filter theo ngành/khóa trong danh sách lớp hành chính phân trang
+    __table_args__ = (
+        Index("ix_homeroom_class_major_id", "major_id"),
+        Index("ix_homeroom_class_cohort", "cohort"),
+    )
 
 
 class Prerequisite(Base):
@@ -50,6 +56,9 @@ class Course(Base):
     )
     course_classes: Mapped[list["CourseClass"]] = relationship(back_populates="course")
 
+    # Index hỗ trợ tìm kiếm trong danh sách học phần (theo code có unique index sẵn)
+    __table_args__ = (Index("ix_course_name", "name"),)
+
 
 class CourseClass(Base):
     """Lớp học phần — 1 học phần mở nhiều lớp theo kỳ.
@@ -72,6 +81,12 @@ class CourseClass(Base):
     course: Mapped["Course"] = relationship(back_populates="course_classes")
     lecturer: Mapped["Lecturer | None"] = relationship(back_populates="course_classes")
     enrollments: Mapped[list["Enrollment"]] = relationship(back_populates="course_class")
+
+    # Index hỗ trợ filter theo kỳ/năm trong danh sách lớp học phần phân trang
+    __table_args__ = (
+        Index("ix_course_class_term", "term"),
+        Index("ix_course_class_year", "year"),
+    )
 
 
 class Enrollment(Base):

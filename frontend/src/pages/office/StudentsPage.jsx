@@ -48,7 +48,7 @@ export default function OfficeStudentsPage() {
   };
 
   useEffect(() => {
-    Promise.all([api.get("/majors"), api.get("/homeroom-classes")])
+    Promise.all([api.get("/majors/all"), api.get("/homeroom-classes/all")])
       .then(([m, h]) => {
         setMajors(m.data);
         setHomerooms(h.data);

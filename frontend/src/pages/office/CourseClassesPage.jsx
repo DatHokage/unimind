@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ListFilter, Presentation, Search } from "lucide-react";
 import api, { errMsg } from "../../api/client";
-import { Card, DataTable, Cell, Spinner, Alert, Button } from "../../components/ui";
+import { Card, DataTable, Cell, Spinner, Alert, Button, Pagination } from "../../components/ui";
 import { CourseClassRow } from "../../components/domain/CourseClassRow";
 import { INPUT_CLS, LABEL_CLS } from "../../utils/forms";
 
 const EMPTY = { course_id: "", lecturer_id: "", term: 1, year: 2026, max_size: 40, status: "open", schedule: [] };
+const EMPTY_FILTERS = { year: "", term: "", status: "", course_id: "", lecturer_id: "" };
+const PAGE_SIZE = 10;
 
 const WEEKDAYS = [
   { v: 2, label: "Thứ Hai" },
@@ -22,15 +24,24 @@ export default function OfficeCourseClassesPage() {
   const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  // Dropdown trong form & bộ lọc: toàn bộ học phần/giảng viên (không phân trang)
   const [courses, setCourses] = useState([]);
   const [lecturers, setLecturers] = useState([]);
-  const [filters, setFilters] = useState({ year: "", term: "", status: "" });
+  const [search, setSearch] = useState(""); // nội dung ô nhập
+  const [appliedSearch, setAppliedSearch] = useState(""); // từ khóa đang áp dụng cho danh sách hiện tại
+  const [filters, setFilters] = useState(EMPTY_FILTERS); // nội dung các ô lọc
+  const [applied, setApplied] = useState(EMPTY_FILTERS); // bộ lọc đang áp dụng cho danh sách hiện tại
   const [form, setForm] = useState(EMPTY);
   const [showForm, setShowForm] = useState(() => location.state?.form === 1);
   // Dòng đang sửa — null = chế độ mở lớp mới
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // Tăng dần mỗi lần gọi API — response của request cũ về sau bị bỏ qua
+  const reqId = useRef(0);
 
   // Panel "Quản lý SV": lớp đang mở panel + danh sách đăng ký trong lớp đó
   const [managed, setManaged] = useState(null);
@@ -42,23 +53,35 @@ export default function OfficeCourseClassesPage() {
   const [stuResults, setStuResults] = useState([]);
   const [pickedStudent, setPickedStudent] = useState("");
 
-  const load = async (f = filters) => {
-    const params = {};
+  // Server-side pagination: chỉ tải đúng các bản ghi của trang hiện tại, không filter/slice ở frontend.
+  // Trả về true nếu response được áp dụng (false = request cũ bị bỏ qua).
+  const load = async (pageNum, q = "", f = applied) => {
+    const id = ++reqId.current;
+    const params = { page: pageNum, size: PAGE_SIZE };
+    if (q) params.search = q;
     if (f.year) params.year = Number(f.year);
     if (f.term) params.term = Number(f.term);
     if (f.status) params.status = f.status;
-    const [c, co, le] = await Promise.all([
-      api.get("/course-classes", { params }),
-      api.get("/courses"),
-      api.get("/lecturers"),
-    ]);
-    setClasses(c.data);
-    setCourses(co.data);
-    setLecturers(le.data);
+    if (f.course_id) params.course_id = Number(f.course_id);
+    if (f.lecturer_id) params.lecturer_id = Number(f.lecturer_id);
+    const { data } = await api.get("/course-classes", { params });
+    if (id !== reqId.current) return false;
+    setClasses(data.data);
+    setPage(data.page);
+    setTotalPages(data.totalPages);
+    setTotalElements(data.totalElements);
+    return true;
   };
 
   useEffect(() => {
-    load()
+    // Danh mục cho form + bộ lọc: toàn bộ học phần/giảng viên (không phân trang)
+    Promise.all([api.get("/courses/all"), api.get("/lecturers/all")])
+      .then(([co, le]) => {
+        setCourses(co.data);
+        setLecturers(le.data);
+      })
+      .catch((e) => setError(errMsg(e)));
+    load(0, "", EMPTY_FILTERS)
       .catch((e) => setError(errMsg(e)))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,6 +98,28 @@ export default function OfficeCourseClassesPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
+
+  // Tìm kiếm: luôn quay về trang đầu với từ khóa mới
+  const applySearch = () => {
+    const q = search;
+    load(0, q, applied)
+      .then((ok) => {
+        if (ok) setAppliedSearch(q);
+      })
+      .catch((e) => setError(errMsg(e)));
+  };
+
+  // Áp bộ lọc: luôn quay về trang đầu với điều kiện mới
+  const applyFilters = () => {
+    const f = { ...filters };
+    load(0, appliedSearch, f)
+      .then((ok) => {
+        if (ok) setApplied(f);
+      })
+      .catch((e) => setError(errMsg(e)));
+  };
+
+  const goPage = (p) => load(p, appliedSearch, applied).catch((e) => setError(errMsg(e)));
 
   const closeForm = () => {
     setShowForm(false);
@@ -136,7 +181,7 @@ export default function OfficeCourseClassesPage() {
         setForm(EMPTY);
         setShowForm(false);
       }
-      await load();
+      await load(page, appliedSearch, applied);
     } catch (err) {
       setError(errMsg(err));
     }
@@ -148,7 +193,7 @@ export default function OfficeCourseClassesPage() {
       await api.patch(`/course-classes/${c.id}`, {
         status: c.status === "open" ? "closed" : "open",
       });
-      await load();
+      await load(page, appliedSearch, applied);
     } catch (err) {
       setError(errMsg(err));
     }
@@ -204,7 +249,7 @@ export default function OfficeCourseClassesPage() {
       setPickedStudent("");
       setStuSearch("");
       setStuResults([]);
-      await Promise.all([loadManagedRows(managed.id), load()]);
+      await Promise.all([loadManagedRows(managed.id), load(page, appliedSearch, applied)]);
     } catch (err) {
       setError(errMsg(err));
     }
@@ -217,7 +262,7 @@ export default function OfficeCourseClassesPage() {
       await api.delete(`/enrollments/${id}`);
       setSuccess("Đã xóa sinh viên khỏi lớp");
       setConfirmEnrollId(null);
-      await Promise.all([loadManagedRows(managed.id), load()]);
+      await Promise.all([loadManagedRows(managed.id), load(page, appliedSearch, applied)]);
     } catch (err) {
       setError(errMsg(err));
       setConfirmEnrollId(null);
@@ -244,11 +289,13 @@ export default function OfficeCourseClassesPage() {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const setF = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
 
+  const hasFilter = appliedSearch || Object.values(applied).some(Boolean);
+
   if (loading) return <Spinner />;
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-secondary num">{classes.length} lớp học phần</p>
+      <p className="text-sm text-secondary num">{totalElements} lớp học phần</p>
       {error && (
         <Alert kind="error" onClose={() => setError("")}>
           {error}
@@ -260,9 +307,24 @@ export default function OfficeCourseClassesPage() {
         </Alert>
       )}
 
-      {/* Bộ lọc theo kỳ/trạng thái */}
       <div className="flex flex-wrap items-center gap-2">
-        <ListFilter size={15} className="text-secondary" />
+        <div className="relative">
+          <Search
+            size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary pointer-events-none"
+          />
+          <input
+            className={`${INPUT_CLS} pl-9 w-72 max-w-full`}
+            placeholder="Tìm theo mã/tên học phần, giảng viên…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && applySearch()}
+          />
+        </div>
+        <Button variant="secondary" onClick={applySearch}>
+          Tìm
+        </Button>
+        <ListFilter size={15} className="text-secondary ml-2" />
         <input className={`${INPUT_CLS} w-24`} type="number" placeholder="Năm" value={filters.year} onChange={setF("year")} />
         <input className={`${INPUT_CLS} w-24`} type="number" placeholder="Kỳ" value={filters.term} onChange={setF("term")} />
         <select className={`${INPUT_CLS} w-36`} value={filters.status} onChange={setF("status")}>
@@ -270,7 +332,19 @@ export default function OfficeCourseClassesPage() {
           <option value="open">Mở đăng ký</option>
           <option value="closed">Đóng</option>
         </select>
-        <Button variant="secondary" onClick={() => load().catch((x) => setError(errMsg(x)))}>
+        <select className={`${INPUT_CLS} w-56`} value={filters.course_id} onChange={setF("course_id")}>
+          <option value="">Mọi học phần</option>
+          {courses.map((c) => (
+            <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
+          ))}
+        </select>
+        <select className={`${INPUT_CLS} w-56`} value={filters.lecturer_id} onChange={setF("lecturer_id")}>
+          <option value="">Mọi giảng viên</option>
+          {lecturers.map((l) => (
+            <option key={l.id} value={l.id}>{l.code} — {l.name}</option>
+          ))}
+        </select>
+        <Button variant="secondary" onClick={applyFilters}>
           Lọc
         </Button>
       </div>
@@ -402,9 +476,13 @@ export default function OfficeCourseClassesPage() {
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <Presentation size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
-              <p className="text-sm font-medium">Chưa có lớp học phần nào khớp bộ lọc.</p>
+              <p className="text-sm font-medium">
+                {hasFilter ? "Không có lớp học phần nào khớp điều kiện." : "Chưa có lớp học phần nào."}
+              </p>
               <p className="text-sm text-secondary mt-1">
-                Đổi điều kiện lọc hoặc bấm “Mở lớp mới” ở góc trên bên phải.
+                {hasFilter
+                  ? "Đổi từ khóa hoặc xóa bộ lọc."
+                  : "Bấm “Mở lớp mới” ở góc trên bên phải để mở lớp đầu tiên."}
               </p>
             </div>
           }
@@ -434,6 +512,7 @@ export default function OfficeCourseClassesPage() {
             </CourseClassRow>
           )}
         />
+        <Pagination page={page} totalPages={totalPages} onPageChange={goPage} />
       </Card>
 
       {/* Panel quản lý sinh viên của lớp đang chọn */}

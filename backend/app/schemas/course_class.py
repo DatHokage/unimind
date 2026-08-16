@@ -50,3 +50,13 @@ class CourseClassOut(BaseModel):
     lecturer_name: str | None = None
     enrolled_count: int = 0
     prerequisite_codes: list[str] = []
+
+
+class CourseClassPage(BaseModel):
+    """Kết quả phân trang danh sách lớp học phần (server-side pagination)."""
+
+    data: list[CourseClassOut]
+    page: int
+    size: int
+    totalElements: int
+    totalPages: int

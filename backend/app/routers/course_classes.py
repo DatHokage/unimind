@@ -1,11 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth_dependency import require_role
 from app.models import Course, CourseClass, Enrollment, Lecturer
-from app.schemas.course_class import CourseClassCreate, CourseClassOut, CourseClassUpdate
+from app.schemas.course_class import (
+    CourseClassCreate,
+    CourseClassOut,
+    CourseClassPage,
+    CourseClassUpdate,
+)
 from app.schemas.enrollment import EnrollmentOut
 from app.services.course_service import get_prerequisite_ids
 
@@ -65,8 +70,61 @@ def _get_course_class_or_404(db: Session, course_class_id: int) -> CourseClass:
     return cc
 
 
-@router.get("", response_model=list[CourseClassOut])
+@router.get("", response_model=CourseClassPage)
 def list_course_classes(
+    search: str | None = None,
+    term: int | None = None,
+    year: int | None = None,
+    status: str | None = None,
+    course_id: int | None = None,
+    lecturer_id: int | None = None,
+    page: int = Query(0, ge=0),
+    size: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("training_office", "advisor", "lecturer", "student")),
+):
+    """Danh sách lớp học phần phân trang phía server — chỉ query đúng các bản ghi của trang hiện tại."""
+    stmt = select(CourseClass)
+    if term is not None:
+        stmt = stmt.where(CourseClass.term == term)
+    if year is not None:
+        stmt = stmt.where(CourseClass.year == year)
+    if status is not None:
+        stmt = stmt.where(CourseClass.status == status)
+    if course_id is not None:
+        stmt = stmt.where(CourseClass.course_id == course_id)
+    if lecturer_id is not None:
+        stmt = stmt.where(CourseClass.lecturer_id == lecturer_id)
+    if search:
+        keyword = f"%{search.strip()}%"
+        stmt = stmt.join(Course, CourseClass.course_id == Course.id).join(
+            Lecturer, CourseClass.lecturer_id == Lecturer.id, isouter=True
+        ).where(
+            or_(
+                Course.code.ilike(keyword),
+                Course.name.ilike(keyword),
+                Lecturer.name.ilike(keyword),
+                Lecturer.code.ilike(keyword),
+            )
+        )
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    classes = db.scalars(
+        stmt.order_by(CourseClass.year, CourseClass.term, CourseClass.id)
+        .offset(page * size)
+        .limit(size)
+    ).all()
+    return CourseClassPage(
+        data=[_course_class_out(db, cc) for cc in classes],
+        page=page,
+        size=size,
+        totalElements=total,
+        totalPages=(total + size - 1) // size,
+    )
+
+
+@router.get("/all", response_model=list[CourseClassOut])
+def list_all_course_classes(
     term: int | None = None,
     year: int | None = None,
     status: str | None = None,
@@ -74,6 +132,7 @@ def list_course_classes(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office", "advisor", "lecturer", "student")),
 ):
+    """Toàn bộ lớp học phần (không phân trang) — chỉ dùng cho dropdown/select và trang đăng ký."""
     stmt = select(CourseClass)
     if term is not None:
         stmt = stmt.where(CourseClass.term == term)

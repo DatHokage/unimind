@@ -36,4 +36,14 @@ class CourseBrief(BaseModel):
     credits: int
 
 
+class CoursePage(BaseModel):
+    """Kết quả phân trang danh sách học phần (server-side pagination)."""
+
+    data: list[CourseOut]
+    page: int
+    size: int
+    totalElements: int
+    totalPages: int
+
+
 CourseOut.model_rebuild()

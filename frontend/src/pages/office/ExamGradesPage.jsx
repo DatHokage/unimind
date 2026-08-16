@@ -65,7 +65,7 @@ export default function OfficeExamGradesPage() {
 
   useEffect(() => {
     api
-      .get("/course-classes")
+      .get("/course-classes/all")
       .then(({ data }) => setClasses(data))
       .catch((e) => setError(errMsg(e)))
       .finally(() => setLoading(false));

@@ -31,7 +31,7 @@ export function AuthProvider({ children }) {
     } else if (user.lecturer_id) {
       // Backend không có GET /lecturers/{id} → lấy danh sách rồi tìm theo id
       api
-        .get("/lecturers")
+        .get("/lecturers/all")
         .then(({ data }) => {
           const me = data.find((l) => l.id === user.lecturer_id);
           if (me?.name) persist({ ...user, name: me.name });

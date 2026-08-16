@@ -16,3 +16,13 @@ class MajorOut(BaseModel):
     id: int
     code: str
     name: str
+
+
+class MajorPage(BaseModel):
+    """Kết quả phân trang danh sách ngành học (server-side pagination)."""
+
+    data: list[MajorOut]
+    page: int
+    size: int
+    totalElements: int
+    totalPages: int

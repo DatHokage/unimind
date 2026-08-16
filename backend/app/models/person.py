@@ -17,6 +17,9 @@ class Major(Base):
 
     students: Mapped[list["Student"]] = relationship(back_populates="major")
 
+    # Index hỗ trợ tìm kiếm trong danh sách ngành học (theo code có unique index sẵn)
+    __table_args__ = (Index("ix_major_name", "name"),)
+
 
 class Student(Base):
     """Sinh viên."""
@@ -50,3 +53,6 @@ class Lecturer(Base):
 
     course_classes: Mapped[list["CourseClass"]] = relationship(back_populates="lecturer")
     advised_classes: Mapped[list["HomeroomClass"]] = relationship(back_populates="advisor")
+
+    # Index hỗ trợ tìm kiếm trong danh sách giảng viên (theo code có unique index sẵn)
+    __table_args__ = (Index("ix_lecturer_name", "name"),)

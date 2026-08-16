@@ -116,7 +116,7 @@ def test_delete_lecturer_ok(client, db, make_user, make_lecturer):
     h = make_user(db, role="training_office")
 
     assert client.delete(f"/lecturers/{l.id}", headers=h).status_code == 200
-    assert all(x["id"] != l.id for x in client.get("/lecturers", headers=h).json())
+    assert all(x["id"] != l.id for x in client.get("/lecturers/all", headers=h).json())
 
 
 def test_delete_lecturer_blocked_when_teaching(client, db, make_user, make_lecturer,
@@ -155,7 +155,7 @@ def test_delete_major_ok(client, db, make_user, make_major):
     h = make_user(db, role="training_office")
 
     assert client.delete(f"/majors/{m.id}", headers=h).status_code == 200
-    assert all(x["id"] != m.id for x in client.get("/majors", headers=h).json())
+    assert all(x["id"] != m.id for x in client.get("/majors/all", headers=h).json())
 
 
 def test_delete_major_blocked_when_has_students(client, db, make_user, make_major, make_student):
@@ -266,7 +266,7 @@ def test_delete_course_ok(client, db, make_user, make_course):
     h = make_user(db, role="training_office")
 
     assert client.delete(f"/courses/{c.id}", headers=h).status_code == 200
-    assert all(x["id"] != c.id for x in client.get("/courses", headers=h).json())
+    assert all(x["id"] != c.id for x in client.get("/courses/all", headers=h).json())
 
 
 def test_delete_course_blocked_when_has_classes(client, db, make_user, make_course, make_course_class):

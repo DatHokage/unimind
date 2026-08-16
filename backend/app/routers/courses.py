@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.dependencies.auth_dependency import require_role
 from app.models import Course, CourseClass, Prerequisite
-from app.schemas.course import CourseBrief, CourseCreate, CourseOut, CourseUpdate
+from app.schemas.course import CourseBrief, CourseCreate, CourseOut, CoursePage, CourseUpdate
 from app.services.course_service import attach_prerequisites
 
 router = APIRouter(prefix="/courses", tags=["Học phần"])
@@ -29,11 +29,45 @@ def _get_course_or_404(db: Session, course_id: int) -> Course:
     return course
 
 
-@router.get("", response_model=list[CourseOut])
+@router.get("", response_model=CoursePage)
 def list_courses(
+    search: str | None = None,
+    counted_in_gpa: bool | None = None,
+    page: int = Query(0, ge=0),
+    size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office", "advisor", "lecturer", "student")),
 ):
+    """Danh sách học phần phân trang phía server — chỉ query đúng các bản ghi của trang hiện tại."""
+    stmt = select(Course)
+    if counted_in_gpa is not None:
+        stmt = stmt.where(Course.counted_in_gpa == counted_in_gpa)
+    if search:
+        keyword = f"%{search.strip()}%"
+        stmt = stmt.where(or_(Course.name.ilike(keyword), Course.code.ilike(keyword)))
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    courses = db.scalars(
+        stmt.options(joinedload(Course.prerequisites))
+        .order_by(Course.code, Course.id)
+        .offset(page * size)
+        .limit(size)
+    ).unique().all()
+    return CoursePage(
+        data=[_course_out(db, c) for c in courses],
+        page=page,
+        size=size,
+        totalElements=total,
+        totalPages=(total + size - 1) // size,
+    )
+
+
+@router.get("/all", response_model=list[CourseOut])
+def list_all_courses(
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("training_office", "advisor", "lecturer", "student")),
+):
+    """Toàn bộ học phần (không phân trang) — chỉ dùng cho dropdown/select của form."""
     courses = db.scalars(select(Course).order_by(Course.code)).all()
     return [_course_out(db, c) for c in courses]
 

@@ -27,3 +27,13 @@ class LecturerOut(BaseModel):
     code: str
     name: str
     department: str | None = None
+
+
+class LecturerPage(BaseModel):
+    """Kết quả phân trang danh sách giảng viên (server-side pagination)."""
+
+    data: list[LecturerOut]
+    page: int
+    size: int
+    totalElements: int
+    totalPages: int

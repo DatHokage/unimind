@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth_dependency import require_role
 from app.models import HomeroomClass, Major, Student
-from app.schemas.major import MajorCreate, MajorOut, MajorUpdate
+from app.schemas.major import MajorCreate, MajorOut, MajorPage, MajorUpdate
 
 router = APIRouter(prefix="/majors", tags=["Ngành học"])
 
@@ -17,11 +17,37 @@ def _get_major_or_404(db: Session, major_id: int) -> Major:
     return major
 
 
-@router.get("", response_model=list[MajorOut])
+@router.get("", response_model=MajorPage)
 def list_majors(
+    search: str | None = None,
+    page: int = Query(0, ge=0),
+    size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office", "advisor", "lecturer", "student")),
 ):
+    """Danh sách ngành học phân trang phía server — chỉ query đúng các bản ghi của trang hiện tại."""
+    stmt = select(Major)
+    if search:
+        keyword = f"%{search.strip()}%"
+        stmt = stmt.where(or_(Major.name.ilike(keyword), Major.code.ilike(keyword)))
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    majors = db.scalars(stmt.order_by(Major.code).offset(page * size).limit(size)).all()
+    return MajorPage(
+        data=majors,
+        page=page,
+        size=size,
+        totalElements=total,
+        totalPages=(total + size - 1) // size,
+    )
+
+
+@router.get("/all", response_model=list[MajorOut])
+def list_all_majors(
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("training_office", "advisor", "lecturer", "student")),
+):
+    """Toàn bộ ngành học (không phân trang) — chỉ dùng cho dropdown/select của form."""
     return db.scalars(select(Major).order_by(Major.code)).all()
 
 

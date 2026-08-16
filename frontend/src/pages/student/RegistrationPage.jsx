@@ -21,7 +21,7 @@ export default function RegistrationPage() {
 
   const load = async () => {
     const [cc, en] = await Promise.all([
-      api.get("/course-classes", { params: { status: "open" } }),
+      api.get("/course-classes/all", { params: { status: "open" } }),
       api.get(`/enrollments/student/${user.student_id}`),
     ]);
     setClasses(cc.data);

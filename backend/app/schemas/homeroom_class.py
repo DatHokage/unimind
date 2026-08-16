@@ -26,3 +26,13 @@ class HomeroomClassOut(BaseModel):
     advisor_id: int | None = None
     advisor_name: str | None = None
     student_count: int | None = None
+
+
+class HomeroomClassPage(BaseModel):
+    """Kết quả phân trang danh sách lớp hành chính (server-side pagination)."""
+
+    data: list[HomeroomClassOut]
+    page: int
+    size: int
+    totalElements: int
+    totalPages: int
