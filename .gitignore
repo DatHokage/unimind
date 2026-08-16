@@ -24,6 +24,10 @@ venv/
 *.db-shm
 *.sqlite-wal
 *.sqlite-shm
+# Ngoại lệ: file lõi của vector store RAG (ChromaDB) PHẢI nằm trong repo —
+# thiếu chroma.sqlite3 thì chatbot quy chế không chạy được sau khi deploy.
+!backend/vectorstore/**/*.sqlite3
+!backend/vectorstore/**/*.bin
 
 # ===== Node / Frontend =====
 node_modules/

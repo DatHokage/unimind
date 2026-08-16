@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import settings
 from app.routers import (
     ai,
     auth,
@@ -34,9 +35,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Hệ thống Quản lý Đào tạo", version="1.0.0", lifespan=lifespan)
 
+# Origin được phép gọi API — cấu hình qua biến môi trường CORS_ORIGINS
+# (mặc định localhost:5173 cho dev; khi deploy thêm domain Vercel của frontend).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

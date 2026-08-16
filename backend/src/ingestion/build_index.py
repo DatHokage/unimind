@@ -63,6 +63,12 @@ def collect_source_files(raw_dir: Path) -> list[Path]:
     return files
 
 
+def _source_files_exist(raw_dir: Path) -> bool:
+    """Kiem tra co file quy che nao khong (khong raise nhu collect_source_files)."""
+    files = list(raw_dir.glob("*.docx")) + list(raw_dir.glob("*.pdf"))
+    return any(not f.name.startswith("~$") for f in files)
+
+
 def build_index(files: list[Path]) -> int:
     """Toan bo pipeline: load -> chunk -> embed -> luu ChromaDB. Tra ve so chunk."""
     from src.ingestion.loader import load_docx
@@ -118,6 +124,16 @@ def main() -> None:
     ap.add_argument("--save-chunks", action="store_true",
                     help="Luu them chunks ra data/processed/chunks.json")
     args = ap.parse_args()
+
+    # Khi chay trong build cua Render: tai lieu goc (DOCX) khong nam trong repo
+    # (bi .gitignore), chi co vectorstore/ da commit. Dat bien nay de buoc build
+    # chi tai embedding model vao cache (bake vao image) ma khong phai build lai
+    # index — tranh bao loi thieu file.
+    if os.getenv("SKIP_INDEX_BUILD_IF_NO_DOCS") == "1" and not _source_files_exist(DATA_RAW_DIR):
+        print(f"[SKIP] Khong co DOCX/PDF nao trong {DATA_RAW_DIR}/ va "
+              "SKIP_INDEX_BUILD_IF_NO_DOCS=1 -> giu nguyen vector store hien co "
+              "(da commit trong repo).")
+        return
 
     files = collect_source_files(DATA_RAW_DIR)
     n = build_index(files)

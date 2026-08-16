@@ -90,6 +90,62 @@ cd backend
 .venv\Scripts\python scripts\smoke.py      # 32 bước end-to-end (cần server đang chạy; đổi server: set SMOKE_BASE=http://127.0.0.1:8001)
 ```
 
+## Deploy (Vercel + Render + Supabase)
+
+Kiến trúc & bối cảnh chi tiết: [`DEPLOY.md`](DEPLOY.md). Quy trình rút gọn:
+
+### 1. Supabase (database)
+1. Tạo project tại [supabase.com](https://supabase.com) → **Connect** → copy connection string **direct cổng 5432** (không dùng pooler 6543).
+
+### 2. Backend (Render)
+1. Đăng nhập [render.com](https://render.com) (bằng GitHub) → **New → Web Service** → kết nối repo `DatHokage/unimind`.
+2. Cấu hình service:
+   - **Name**: tùy chọn (tên này nằm trong domain `.onrender.com`)
+   - **Region**: Singapore (gần VN nhất)
+   - **Root Directory**: `backend`
+   - **Branch**: `main`
+   - **Runtime**: Python (tự nhận qua `requirements.txt` + `runtime.txt`)
+   - **Build Command**:
+     ```
+     pip install -r requirements.txt && python -m src.ingestion.build_index && alembic upgrade head && python -m app.seed
+     ```
+     Bước `build_index` **tải embedding model tiếng Việt (~500MB) vào ngay trong lúc build** để model được "bake" vào image deploy — service khởi động lại/scale ra không phải tải lại (free tier không có volume). File DOCX gốc không nằm trong repo nên phải đặt biến `SKIP_INDEX_BUILD_IF_NO_DOCS=1` để bước này dùng cache thay vì báo lỗi (xem lưu ý bên dưới). Nếu không muốn bake, bỏ bước `build_index` — model sẽ tải khi service start (lần đầu chậm hơn).
+   - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT` (hoặc để trống cho Render tự đọc `Procfile`)
+   - **Instance Type**: **Free** (đủ demo; server ngủ sau 15 phút không dùng) — hoặc trả phí nếu cần chạy 24/7 lúc bảo vệ.
+3. **Environment** (tab Environment):
+
+   | Biến | Giá trị |
+   |---|---|
+   | `SUPABASE_DB_URL` | connection string Supabase (cổng 5432) |
+   | `SECRET_KEY` | chuỗi ngẫu nhiên ≥ 32 ký tự |
+   | `OPENROUTER_API_KEY` | key OpenRouter (https://openrouter.ai/keys) |
+   | `GOOGLE_API_KEY` | key Gemini (https://aistudio.google.com/apikey) — dự phòng, đặt càng tốt |
+   | `CORS_ORIGINS` | `https://<domain-vercel>.vercel.app` (bước 3 xong quay lại điền; có thể thêm `http://localhost:5173` để dev vẫn gọi được) |
+   | `SKIP_INDEX_BUILD_IF_NO_DOCS` | `1` (nếu Build Command có bước `build_index`) |
+
+4. **Manual Deploy → Deploy latest commit**.
+5. Kiểm tra: mở `https://<name>.onrender.com/health` → `{"status":"ok"}`; `/docs` hiện Swagger.
+
+> ⚠️ **Free tier**: (1) server ngủ sau 15 phút không dùng — request đầu mất ~30–60s để đánh thức, **gọi `/health` trước buổi demo 5–10 phút** để làm ấm; (2) RAM 512MB — đủ chạy nhưng nếu service bị OOM khi warm-up RAG thì nâng instance nhỏ trả phí.
+
+### 3. Frontend (Vercel)
+1. [vercel.com](https://vercel.com) → **Add New → Project** → import repo `DatHokage/unimind`.
+2. **Root Directory**: `frontend` (Framework tự nhận Vite).
+3. **Environment Variable**: `VITE_API_BASE_URL` = `https://<name>.onrender.com` (domain bước 2.5).
+4. Deploy → copy domain `https://xxx.vercel.app` → quay lại Render điền `CORS_ORIGINS` → redeploy backend.
+5. Mở trang Vercel, đăng nhập `student1` / `password123`, thử chat quy chế.
+
+### 4. Xác minh sau deploy
+```bash
+python scripts\smoke.py        # set SMOKE_BASE=https://<name>.onrender.com trước khi chạy
+```
+Và test thủ công: đăng nhập 4 vai trò, đăng ký học phần + AI tư vấn, chat quy chế (kiểm tra `provider` trong câu trả lời).
+
+### Lưu ý vận hành
+- **Không có key LLM**: AI tư vấn/tóm tắt trả fallback server-side (không chết API); chatbot quy chế trả 503 — cần ít nhất 1 trong 2 key OpenRouter/Gemini.
+- **Cập nhật quy chế**: đặt DOCX vào `backend/data/raw/` → chạy `python -m src.ingestion.build_index` ở máy local → commit `backend/vectorstore/` → push (Render tự redeploy; trên Render nên **bỏ biến `SKIP_INDEX_BUILD_IF_NO_DOCS`** khi có file DOCX trong repo, hoặc tiếp tục dùng index đã commit).
+- **Cold start**: free tier ngủ sau 15 phút — làm ấm `/health` trước khi demo; muốn hết hẳn, nâng instance trả phí.
+
 ## Tài khoản demo (sau `python -m app.seed`)
 
 Mật khẩu chung: `password123`

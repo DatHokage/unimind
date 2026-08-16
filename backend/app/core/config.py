@@ -32,5 +32,14 @@ class Settings(BaseSettings):
     # Nghiệp vụ: ngưỡng total_score được coi là qua môn (thỏa mãn điều kiện tiên quyết)
     PASS_THRESHOLD: float = 5.0
 
+    # CORS: danh sách origin được phép gọi API, phân tách bằng dấu phẩy.
+    # Khi deploy: thêm domain Vercel của frontend, VD
+    # CORS_ORIGINS=http://localhost:5173,https://unimind.vercel.app
+    CORS_ORIGINS: str = "http://localhost:5173"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
 
 settings = Settings()

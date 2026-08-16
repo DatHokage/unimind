@@ -1,7 +1,11 @@
 import axios from "axios";
 
-// baseURL /api → vite proxy chuyển sang http://localhost:8000 (bỏ tiền tố /api)
-const api = axios.create({ baseURL: "/api" });
+// Dev: baseURL /api → vite proxy chuyển sang http://localhost:8000 (bỏ tiền tố /api).
+// Deploy: đặt VITE_API_BASE_URL = domain backend (VD https://unimind.onrender.com)
+// trên Vercel (Settings → Environment Variables) — gọi thẳng sang backend, không qua proxy.
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
+});
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("ql_token");

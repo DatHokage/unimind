@@ -1,0 +1,5 @@
+# Render (Python runtime) — lệnh khởi động backend FastAPI.
+# $PORT do Render tự gán.
+# Migration + seed chạy ở Build Command (cấu hình trên dashboard Render),
+# không chạy ở đây để mỗi lần scale/restart không re-migrate.
+web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
