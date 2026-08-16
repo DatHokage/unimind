@@ -1,0 +1,58 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Môi trường ảo & biến môi trường (KHÔNG push secret)
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# ===== Cơ sở dữ liệu =====
+*.db
+*.sqlite
+*.sqlite3
+# WAL/SHM journal của SQLite
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+
+# ===== Node / Frontend =====
+node_modules/
+dist/
+dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===== Log & cache =====
+logs/
+*.log
+
+# ===== Dữ liệu RAG =====
+# RAG chatbot quy che: vectorstore/ được giữ trong repo (11MB, dựng sẵn) để
+# chạy được ngay. Chỉ bỏ qua tài liệu gốc, index phụ và log chat.
+backend/data/raw/*.docx
+backend/data/raw/*.pdf
+backend/data/processed/
+backend/logs/
+
+# ===== IDE / Editor / OS =====
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ===== File rác do redirect nhầm trên Windows =====
+nul

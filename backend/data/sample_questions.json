@@ -1,0 +1,178 @@
+[
+  {
+    "question": "Người học có những quyền gì theo quy chế?",
+    "expected_dieu": "Điều 5",
+    "expected_muc": "Quy định về công tác người học",
+    "expected_answer": "Các quyền của người học theo Điều 5 Quy định về công tác người học."
+  },
+  {
+    "question": "Người học phải thực hiện những nhiệm vụ gì?",
+    "expected_dieu": "Điều 6",
+    "expected_muc": "Quy định về công tác người học",
+    "expected_answer": "Nhiệm vụ của người học: tuân thủ pháp luật, quy chế nhà trường, thực hiện nhiệm vụ học tập, rèn luyện."
+  },
+  {
+    "question": "Người học không được thực hiện những hành vi nào?",
+    "expected_dieu": "Điều 7",
+    "expected_muc": "Quy định về công tác người học",
+    "expected_answer": "Các hành vi người học không được thực hiện quy định tại Điều 7."
+  },
+  {
+    "question": "Có những hình thức kỷ luật nào đối với người học vi phạm?",
+    "expected_dieu": "Điều 24",
+    "expected_muc": "Quy định về công tác người học",
+    "expected_answer": "Các hình thức kỷ luật: khiển trách, cảnh cáo, đình chỉ học tập có thời hạn, buộc thôi học (Điều 24)."
+  },
+  {
+    "question": "Sinh viên bị buộc thôi học trong những trường hợp nào?",
+    "expected_dieu": "Điều 24",
+    "expected_muc": "Quy định về công tác người học",
+    "expected_answer": "Buộc thôi học áp dụng cho trường hợp vi phạm rất nghiêm trọng/tái phạm nhiều lần theo Điều 24."
+  },
+  {
+    "question": "Quy trình xử lý kỷ luật người học gồm những bước nào?",
+    "expected_dieu": "Điều 25",
+    "expected_muc": "Quy định về công tác người học",
+    "expected_answer": "Trình tự, hồ sơ xử lý kỷ luật theo Điều 25."
+  },
+  {
+    "question": "Kết quả rèn luyện của sinh viên được phân thành mấy loại?",
+    "expected_dieu": "Điều 14",
+    "expected_muc": "Quy chế đánh giá kết quả rèn luyện",
+    "expected_answer": "6 loại: xuất sắc, tốt, khá, trung bình, yếu, kém (Điều 14 Quy chế đánh giá kết quả rèn luyện)."
+  },
+  {
+    "question": "Kết quả rèn luyện được đánh giá dựa trên những nội dung nào?",
+    "expected_dieu": "Điều 3",
+    "expected_muc": "Quy chế đánh giá kết quả rèn luyện",
+    "expected_answer": "Các nội dung đánh giá và thang điểm theo Điều 3 (đánh giá ý thức học tập, nội quy, hoạt động...)."
+  },
+  {
+    "question": "Kết quả rèn luyện được đánh giá vào thời gian nào?",
+    "expected_dieu": "Điều 19",
+    "expected_muc": "Quy chế đánh giá kết quả rèn luyện",
+    "expected_answer": "Đánh giá định kỳ theo học kỳ, năm học và toàn khóa học (Điều 19)."
+  },
+  {
+    "question": "Quy trình đánh giá kết quả rèn luyện của sinh viên thực hiện thế nào?",
+    "expected_dieu": "Điều 17",
+    "expected_muc": "Quy chế đánh giá kết quả rèn luyện",
+    "expected_answer": "Quy trình đánh giá: sinh viên tự đánh giá, lớp tập thể, cố vấn học tập, Khoa, Hội đồng trường (Điều 17)."
+  },
+  {
+    "question": "Kết quả rèn luyện được sử dụng để làm gì?",
+    "expected_dieu": "Điều 20",
+    "expected_muc": "Quy chế đánh giá kết quả rèn luyện",
+    "expected_answer": "Sử dụng kết quả rèn luyện: xét học bổng, khen thưởng, kỷ luật, tốt nghiệp (Điều 20)."
+  },
+  {
+    "question": "Thẻ sinh viên được cấp phát và sử dụng như thế nào?",
+    "expected_dieu": "",
+    "expected_muc": "Quy trình về cấp phát và sử dụng thẻ sinh viên",
+    "expected_answer": "Quy trình cấp phát và sử dụng thẻ sinh viên theo mục C."
+  },
+  {
+    "question": "Hoạt động ngoại khóa của sinh viên gồm những nội dung gì?",
+    "expected_dieu": "Điều 4",
+    "expected_muc": "hoạt động ngoại khóa",
+    "expected_answer": "Nội dung hoạt động ngoại khóa theo Điều 4 Quy định tổ chức, đánh giá hoạt động ngoại khóa."
+  },
+  {
+    "question": "Điểm hoạt động ngoại khóa được đánh giá và phân loại thế nào?",
+    "expected_dieu": "Điều 5",
+    "expected_muc": "hoạt động ngoại khóa",
+    "expected_answer": "Nguyên tắc đánh giá điểm, thời gian đánh giá và phân loại kết quả theo Điều 5."
+  },
+  {
+    "question": "Có những loại học bổng nào dành cho sinh viên?",
+    "expected_dieu": "Điều 2",
+    "expected_muc": "Quy định về học bổng",
+    "expected_answer": "Các loại học bổng theo Điều 2 Quy định về học bổng (HB KKHT, học bổng tài trợ...)."
+  },
+  {
+    "question": "Điều kiện để đạt học bổng khuyến khích học tập là gì?",
+    "expected_dieu": "Điều 8",
+    "expected_muc": "Quy định về học bổng",
+    "expected_answer": "Bảng điều kiện đạt HB KKHT theo Điều 8: xếp loại Xuất sắc/Giỏi/Khá tương ứng điểm TBCHK và điểm rèn luyện."
+  },
+  {
+    "question": "Mức học bổng khuyến khích học tập là bao nhiêu?",
+    "expected_dieu": "Điều 9",
+    "expected_muc": "Quy định về học bổng",
+    "expected_answer": "Mức cấp HB KKHT theo Điều 9."
+  },
+  {
+    "question": "Hồ sơ đăng ký xét cấp học bổng gồm những gì?",
+    "expected_dieu": "Điều 19",
+    "expected_muc": "Quy định về học bổng",
+    "expected_answer": "Hồ sơ đăng ký xét cấp học bổng theo Điều 19."
+  },
+  {
+    "question": "Những đối tượng nào được miễn học phí?",
+    "expected_dieu": "Điều 15",
+    "expected_muc": "Nghị định số 81/2021/NĐ-CP",
+    "expected_answer": "Các đối tượng được miễn học phí theo Điều 15 (trích Nghị định 81/2021/NĐ-CP)."
+  },
+  {
+    "question": "Đối tượng nào được giảm học phí và hỗ trợ tiền đóng học phí?",
+    "expected_dieu": "Điều 16",
+    "expected_muc": "Nghị định số 81/2021/NĐ-CP",
+    "expected_answer": "Các đối tượng được giảm học phí và hỗ trợ tiền đóng học phí theo Điều 16."
+  },
+  {
+    "question": "Nguyên tắc xác định học phí trong giáo dục đại học là gì?",
+    "expected_dieu": "Điều 8",
+    "expected_muc": "Nghị định số 81/2021/NĐ-CP",
+    "expected_answer": "Nguyên tắc xác định học phí theo Điều 8 (trích Nghị định 81/2021/NĐ-CP)."
+  },
+  {
+    "question": "Sinh viên nội trú có những quyền gì?",
+    "expected_dieu": "Điều 5",
+    "expected_muc": "nội trú",
+    "expected_answer": "Quyền của học sinh, sinh viên nội trú theo Điều 5 (trích Thông tư 27/2011/TT-BGDĐT)."
+  },
+  {
+    "question": "Sinh viên nội trú không được làm những gì?",
+    "expected_dieu": "Điều 7",
+    "expected_muc": "nội trú",
+    "expected_answer": "Các hành vi HSSV nội trú không được làm theo Điều 7."
+  },
+  {
+    "question": "Đối tượng nào được ưu tiên tiếp nhận ở nội trú?",
+    "expected_dieu": "Điều 4",
+    "expected_muc": "nội trú",
+    "expected_answer": "Đối tượng ưu tiên tiếp nhận ở nội trú theo Điều 4."
+  },
+  {
+    "question": "Sinh viên ngoại trú có nghĩa vụ gì?",
+    "expected_dieu": "",
+    "expected_muc": "ngoại trú",
+    "expected_answer": "Quyền và nghĩa vụ của sinh viên ngoại trú theo mục B (Đối với sinh viên ngoại trú)."
+  },
+  {
+    "question": "Chuẩn đầu ra tin học, ngoại ngữ đối với sinh viên tốt nghiệp được quy định thế nào?",
+    "expected_dieu": "",
+    "expected_muc": "chuẩn đầu ra",
+    "expected_answer": "Quy định chuẩn đầu ra tin học, ngoại ngữ và các học phần cốt lõi (Phần III, Chương I, mục B)."
+  },
+  {
+    "question": "Chương trình đào tạo và thời gian học tập được quy định ra sao?",
+    "expected_dieu": "Điều 3",
+    "expected_muc": "đào tạo trình độ đại học",
+    "expected_answer": "Chương trình đào tạo và thời gian học tập theo Điều 3 (trích Quyết định 580/QĐ-ĐHCNTT&TT)."
+  },
+  {
+    "question": "Pizza ngon nhất ở đâu?",
+    "expected_dieu": "",
+    "expected_muc": "",
+    "expected_answer": "REFUSE",
+    "note": "Câu hỏi ngoài phạm vi quy chế — chatbot PHẢI từ chối."
+  },
+  {
+    "question": "Giá vàng hôm nay là bao nhiêu?",
+    "expected_dieu": "",
+    "expected_muc": "",
+    "expected_answer": "REFUSE",
+    "note": "Câu hỏi ngoài phạm vi quy chế — chatbot PHẢI từ chối."
+  }
+]

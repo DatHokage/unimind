@@ -1,0 +1,120 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.dependencies.auth_dependency import get_current_user, get_target_student, require_role
+from app.schemas.ai import (
+    CourseAdviceRequest,
+    CourseAdviceResponse,
+    RegulationChatRequest,
+    RegulationChatResponse,
+    RegulationModelListResponse,
+    StudySummaryRequest,
+    StudySummaryResponse,
+)
+from app.services.ai_service import build_study_summary_payload, run_course_advice, run_study_summary
+from app.services.rag_service import (
+    RagLLMError,
+    RagNotAvailableError,
+    answer_regulation_question,
+    is_configured,
+    list_models,
+    rag_status,
+)
+
+router = APIRouter(prefix="/ai", tags=["AI"])
+
+
+@router.post("/course-advice", response_model=CourseAdviceResponse)
+async def course_advice(
+    body: CourseAdviceRequest,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("student")),
+):
+    """AI tư vấn đăng ký học phần — chỉ cho chính sinh viên đang đăng nhập.
+
+    AI chỉ gợi ý, KHÔNG tự đăng ký; sinh viên vẫn phải gọi POST /enrollments
+    (server validate lại toàn bộ điều kiện).
+    """
+    if user["student_id"] != body.student_id:
+        raise HTTPException(status_code=403, detail="Chỉ được tư vấn cho chính mình")
+    ai_result, eligible, fallback = await run_course_advice(
+        db, body.student_id, body.target_year, body.target_term
+    )
+    return CourseAdviceResponse(
+        overview=ai_result["overview"],
+        recommendations=ai_result["recommendations"],
+        warnings=ai_result["warnings"],
+        suggestions=ai_result["suggestions"],
+        notes=ai_result["notes"],
+        eligible_classes=eligible,
+        fallback=fallback,
+    )
+
+
+@router.post("/study-summary", response_model=StudySummaryResponse)
+async def study_summary(
+    body: StudySummaryRequest,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """AI tóm tắt tiến độ học tập — chính sinh viên hoặc advisor phụ trách."""
+    get_target_student(db, user, body.student_id)
+    result, fallback = await run_study_summary(db, body.student_id)
+    return StudySummaryResponse(
+        summary=result["summary"],
+        warnings=result["warnings"],
+        suggestions=result["suggestions"],
+        stats=build_study_summary_payload(db, body.student_id),
+        fallback=fallback,
+    )
+
+
+@router.get("/regulation-chat/status")
+def regulation_chat_status(user: dict = Depends(get_current_user)):
+    """Kiểm tra nhanh chatbot quy chế đã sẵn sàng chưa (không cần chờ load model)."""
+    return {"ready": is_configured(), **rag_status()}
+
+
+@router.get("/regulation-chat/models", response_model=RegulationModelListResponse)
+async def regulation_chat_models(user: dict = Depends(get_current_user)):
+    """Danh sách model miễn phí khả dụng cho dropdown chọn model trong khung chat.
+
+    Trả 503 khi chatbot chưa cấu hình. Danh sách OpenRouter lấy từ API công
+    khai (cache 1h), Gemini là model cấu hình trong .env.
+    """
+    try:
+        data = list_models()
+    except RagNotAvailableError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return RegulationModelListResponse(**data)
+
+
+@router.post("/regulation-chat", response_model=RegulationChatResponse)
+async def regulation_chat(
+    body: RegulationChatRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Chatbot hỏi-đáp quy chế (RAG): truy vấn Sổ tay sinh viên, trả lời kèm
+    trích dẫn Điều / Khoản / trang. Ngữ cảnh hội thoại giữ theo session_id.
+
+    provider/model (tùy chọn, từ dropdown trên web): ép dùng model đó trước;
+    model lỗi vẫn tự fallback sang model miễn phí khác. Bỏ trống = mặc định .env.
+    Trả 503 khi pipeline chưa sẵn sàng (chưa có vector store hoặc API key).
+    """
+    try:
+        result = await answer_regulation_question(
+            body.question, body.session_id,
+            provider=body.provider, model=body.model,
+        )
+    except RagNotAvailableError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except RagLLMError as e:
+        raise HTTPException(status_code=502, detail=f"Chatbot quy chế gặp lỗi: {e}")
+
+    return RegulationChatResponse(
+        answer=result.get("answer", ""),
+        sources=result.get("sources", []),
+        provider=result.get("provider", ""),
+        model=result.get("model", ""),
+    )

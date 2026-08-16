@@ -1,0 +1,26 @@
+/* ============================================================
+   Design tokens — theo frontend.md §2 (Tổ chức bố cục & Design System)
+   Phần mềm nội bộ công sở: sạch, rõ, ít phân tâm.
+   ============================================================ */
+
+:root {
+  /* §2.1 — Màu sắc */
+  --color-primary: #0095ff;        /* Nút hành động chính, link, mục menu active */
+  --color-primary-hover: #007acc;  /* Hover/active state của nút/link chính */
+  --color-primary-soft: #e6f4ff;   /* Nền mục menu active, badge, highlight nhẹ */
+  --color-text-primary: #1a1a1a;   /* Chữ chính */
+  --color-text-secondary: #6b7280; /* Chữ phụ, caption, placeholder */
+  --color-border: #e5e7eb;         /* Đường viền, chia section */
+  --color-bg-app: #f7f9fc;         /* Nền toàn ứng dụng (vùng nội dung) */
+  --color-bg-surface: #ffffff;     /* Nền card, sidebar, bảng */
+  --color-success: #16a34a;        /* "Đúng tiến độ", "Đã duyệt", đạt */
+  --color-warning: #f59e0b;        /* "Chờ duyệt", cảnh báo nhẹ */
+  --color-danger: #dc2626;         /* Lỗi, "Từ chối", điểm dưới ngưỡng */
+
+  /* §2.3 — Shadow: chỉ 1 cấp, dùng tiết chế */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+  /* §2.2 — Typography */
+  --font-sans: "Inter", "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+}

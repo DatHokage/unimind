@@ -1,0 +1,35 @@
+@import "tailwindcss";
+@import "./styles/tokens.css";
+
+/* Tailwind v4: map design tokens (§2) vào palette mặc định để dùng được
+   utility class: bg-app, bg-surface, bg-primary, text-secondary, border-border... */
+@theme inline {
+  --color-app: var(--color-bg-app);
+  --color-surface: var(--color-bg-surface);
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-soft: var(--color-primary-soft);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+  --color-secondary: var(--color-text-secondary);
+  --color-border: var(--color-border);
+  --font-sans: var(--font-sans);
+}
+
+html {
+  font-size: 16px; /* 1rem = 16px để scale §2.2: 0.875rem = 14px */
+}
+
+body {
+  background: var(--color-bg-app);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.875rem; /* text-base 14px — cỡ chữ nội dung chính */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* §2.2 — Số liệu (điểm, tín chỉ, GPA) dùng chữ số đều để bảng thẳng hàng */
+.num {
+  font-variant-numeric: tabular-nums;
+}

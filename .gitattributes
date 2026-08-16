@@ -1,0 +1,53 @@
+# ===== Mặc định: tự phát hiện file text, chuẩn hóa newline về LF khi commit =====
+* text=auto
+
+# ===== Mã nguồn — luôn LF =====
+*.py    text eol=lf
+*.js    text eol=lf
+*.jsx   text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.vue   text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.json  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.toml  text eol=lf
+*.ini   text eol=lf
+*.cfg   text eol=lf
+*.sql   text eol=lf
+*.md    text eol=lf
+*.sh    text eol=lf
+Makefile text eol=lf
+
+# ===== Script Windows — giữ CRLF =====
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# ===== Binary assets — không diff/merge =====
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.pdf   binary
+*.docx  binary
+*.doc   binary
+*.xlsx  binary
+*.zip   binary
+*.7z    binary
+
+# ===== Database & vector store (RAG) =====
+# vectorstore/ được giữ trong repo (11MB) nhưng là file nhị phân:
+# không diff, không merge text, tránh hỏng file khi pull/push.
+*.db       binary
+*.sqlite   binary
+*.sqlite3  binary
+backend/vectorstore/** binary
