@@ -117,7 +117,13 @@ CORS_ORIGINS=http://localhost:5173,https://unimind.vercel.app
 
 **Việc cần làm:**
 1. Tạo project trên Supabase → copy connection string **direct cổng 5432** (không dùng pooler cổng 6543).
-2. Đặt vào biến môi trường `SUPABASE_DB_URL` của backend trên Render.
+2. Đặt vào biến môi trường `SUPABASE_DB_URL` của backend trên Render. Format chuẩn:
+   `postgresql+psycopg2://postgres.<project-ref>:<password>@db.<project-ref>.supabase.co:5432/postgres?sslmode=require`
+   - Nếu lỡ dán dạng cũ `postgres://...` hoặc thiếu driver `postgresql://...`, code
+     (`app/core/config.py` → `normalize_db_url`) tự chuẩn hóa về `postgresql+psycopg2://` — không cần sửa tay.
+   - Lỗi `NoSuchModuleError: sqlalchemy.dialects:postgresql.postgresql` nghĩa là URL
+     bị gõ nhầm thành `postgresql+postgresql://...` (lặp dialect) — sửa lại biến
+     `SUPABASE_DB_URL` trên Render Dashboard → Environment.
 3. Migration + seed chạy tự động qua Build Command (mục 2).
 4. Row Level Security (RLS): **không bắt buộc** — hệ thống tự kiểm soát quyền ở tầng FastAPI (JWT + `require_role`); có thể bật thêm như lớp bảo vệ phụ nếu có thời gian.
 

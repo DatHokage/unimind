@@ -1,6 +1,30 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def normalize_db_url(url: str) -> str:
+    """Chuẩn hóa scheme của connection string về dạng SQLAlchemy hiểu được.
+
+    - `postgres://...` (kiểu cũ, SQLAlchemy >=1.4 từ chối) → `postgresql://...`
+    - `postgresql://...` (chỉ dialect, chưa có driver) → `postgresql+psycopg2://...`
+      để chắc chắn dùng đúng driver psycopg2-binary đã cài trong requirements.
+    Các scheme khác (sqlite://...) được giữ nguyên.
+
+    Lỗi `NoSuchModuleError: sqlalchemy.dialects:postgresql.postgresql` xảy ra khi
+    SQLAlchemy nhận một URL có driver lạ (vd `postgresql+postgresql://...` do gõ
+    nhầm) hoặc URL bị hỏng; hàm này chặn các dạng sai phổ biến ngay từ đầu.
+    """
+    url = url.strip()
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg2://" + url[len("postgresql://"):]
+    elif url.startswith("postgresql+postgresql://"):
+        # Dạng gõ nhầm `dialect+dialect` — chính là nguyên nhân của
+        # NoSuchModuleError: postgresql.postgresql
+        url = "postgresql+psycopg2://" + url[len("postgresql+postgresql://"):]
+    return url
+
+
 class Settings(BaseSettings):
     """Biến môi trường của ứng dụng, đọc từ backend/.env."""
 
@@ -40,6 +64,16 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    def model_post_init(self, __context) -> None:
+        # Chuẩn hóa scheme một chỗ duy nhất: cả app (database.py) lẫn alembic
+        # (env.py) đều đọc SUPABASE_DB_URL từ settings — KHÔNG nơi nào trong
+        # code ghép chuỗi URL thủ công.
+        self.SUPABASE_DB_URL = normalize_db_url(self.SUPABASE_DB_URL)
+        # Debug khi deploy: chỉ in scheme — KHÔNG bao giờ in full URL/password.
+        # Xóa 2 dòng này khi migration trên Render đã chạy ổn định.
+        scheme = self.SUPABASE_DB_URL.split("://", 1)[0]
+        print(f"[config] DB URL scheme = {scheme!r}", flush=True)
 
 
 settings = Settings()
