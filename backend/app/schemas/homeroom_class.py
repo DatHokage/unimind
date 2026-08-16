@@ -8,6 +8,13 @@ class HomeroomClassCreate(BaseModel):
     advisor_id: int | None = None
 
 
+class HomeroomClassUpdate(BaseModel):
+    name: str | None = None
+    major_id: int | None = None
+    cohort: int | None = None
+    advisor_id: int | None = None
+
+
 class HomeroomClassOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

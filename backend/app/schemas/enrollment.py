@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict
 
 class EnrollmentCreate(BaseModel):
     course_class_id: int
+    # Chỉ training_office được truyền (đăng ký hộ); sinh viên tự đăng ký thì bỏ qua
+    student_id: int | None = None
 
 
 class EnrollmentOut(BaseModel):

@@ -9,7 +9,11 @@ from app.dependencies.auth_dependency import (
     require_role,
 )
 from app.models import HomeroomClass, Lecturer, Major, Student
-from app.schemas.homeroom_class import HomeroomClassCreate, HomeroomClassOut
+from app.schemas.homeroom_class import (
+    HomeroomClassCreate,
+    HomeroomClassOut,
+    HomeroomClassUpdate,
+)
 from app.schemas.student import StudentOut
 
 router = APIRouter(prefix="/homeroom-classes", tags=["Lớp hành chính"])
@@ -71,6 +75,57 @@ def create_homeroom_class(
     db.commit()
     db.refresh(hc)
     return _homeroom_out(db, hc)
+
+
+@router.put("/{homeroom_id}", response_model=HomeroomClassOut)
+def update_homeroom_class(
+    homeroom_id: int,
+    body: HomeroomClassUpdate,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("training_office")),
+):
+    hc = db.get(HomeroomClass, homeroom_id)
+    if hc is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy lớp hành chính")
+    data = body.model_dump(exclude_unset=True)
+    if "name" in data and data["name"] != hc.name:
+        if db.scalar(
+            select(HomeroomClass).where(
+                HomeroomClass.name == data["name"], HomeroomClass.id != homeroom_id
+            )
+        ):
+            raise HTTPException(status_code=409, detail="Tên lớp hành chính đã tồn tại")
+    if data.get("advisor_id") is not None and db.get(Lecturer, data["advisor_id"]) is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy giảng viên cố vấn")
+    if data.get("major_id") is not None and db.get(Major, data["major_id"]) is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy ngành học")
+    for field, value in data.items():
+        setattr(hc, field, value)
+    db.commit()
+    db.refresh(hc)
+    return _homeroom_out(db, hc)
+
+
+@router.delete("/{homeroom_id}", status_code=200)
+def delete_homeroom_class(
+    homeroom_id: int,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("training_office")),
+):
+    """Xóa lớp hành chính — chặn nếu lớp vẫn còn sinh viên."""
+    hc = db.get(HomeroomClass, homeroom_id)
+    if hc is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy lớp hành chính")
+    student_count = db.scalar(
+        select(func.count(Student.id)).where(Student.class_id == homeroom_id)
+    ) or 0
+    if student_count:
+        raise HTTPException(
+            status_code=409, detail="Không thể xóa: lớp vẫn còn sinh viên"
+        )
+    db.delete(hc)
+    db.commit()
+    return {"detail": f"Đã xóa lớp hành chính {hc.name}"}
 
 
 @router.get("/{homeroom_id}/students", response_model=list[StudentOut])

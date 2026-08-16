@@ -16,6 +16,7 @@ import AdvisorStudentDetailPage from "./pages/advisor/StudentDetailPage";
 import OfficeDashboardPage from "./pages/office/DashboardPage";
 import StudentsManagePage from "./pages/office/StudentsPage";
 import LecturersManagePage from "./pages/office/LecturersPage";
+import MajorsManagePage from "./pages/office/MajorsPage";
 import HomeroomsManagePage from "./pages/office/HomeroomsPage";
 import CoursesManagePage from "./pages/office/CoursesPage";
 import CourseClassesManagePage from "./pages/office/CourseClassesPage";
@@ -84,6 +85,7 @@ export default function App() {
               <Route index element={<OfficeDashboardPage />} />
               <Route path="students" element={<StudentsManagePage />} />
               <Route path="lecturers" element={<LecturersManagePage />} />
+              <Route path="majors" element={<MajorsManagePage />} />
               <Route path="homerooms" element={<HomeroomsManagePage />} />
               <Route path="courses" element={<CoursesManagePage />} />
               <Route path="course-classes" element={<CourseClassesManagePage />} />

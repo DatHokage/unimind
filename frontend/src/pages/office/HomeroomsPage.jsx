@@ -15,6 +15,10 @@ export default function OfficeHomeroomsPage() {
   const [lecturers, setLecturers] = useState([]);
   const [form, setForm] = useState(EMPTY);
   const [showForm, setShowForm] = useState(() => location.state?.form === 1);
+  // Dòng đang sửa — null = chế độ thêm mới
+  const [editing, setEditing] = useState(null);
+  // id dòng đang chờ xác nhận xóa
+  const [confirmId, setConfirmId] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -35,20 +39,74 @@ export default function OfficeHomeroomsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Nút "+ Thêm lớp" ở header là Link cùng route với state { form: 1 } —
+  // bấm khi đang ở sẵn trang này không remount component nên phải theo dõi
+  // location.key để mở form (location.key đổi mới sau mỗi lần điều hướng).
+  useEffect(() => {
+    if (location.state?.form === 1) {
+      setEditing(null);
+      setConfirmId(null);
+      setForm(EMPTY);
+      setShowForm(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditing(null);
+    setForm(EMPTY);
+  };
+
+  // Nạp dữ liệu dòng vào form và mở chế độ sửa
+  const startEdit = (h) => {
+    setError("");
+    setEditing(h);
+    setForm({
+      name: h.name,
+      major_id: h.major_id ?? "",
+      cohort: h.cohort ?? "",
+      advisor_id: h.advisor_id ?? "",
+    });
+    setShowForm(true);
+    setConfirmId(null);
+  };
+
+  const doDelete = async (id) => {
+    setError("");
+    setSuccess("");
+    try {
+      await api.delete(`/homeroom-classes/${id}`);
+      setSuccess("Đã xóa lớp hành chính");
+      setConfirmId(null);
+      await load();
+    } catch (err) {
+      setError(errMsg(err));
+      setConfirmId(null);
+    }
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
+    const body = {
+      name: form.name.trim(),
+      major_id: form.major_id ? Number(form.major_id) : null,
+      cohort: form.cohort ? Number(form.cohort) : null,
+      advisor_id: form.advisor_id ? Number(form.advisor_id) : null,
+    };
     try {
-      await api.post("/homeroom-classes", {
-        name: form.name.trim(),
-        major_id: form.major_id ? Number(form.major_id) : null,
-        cohort: form.cohort ? Number(form.cohort) : null,
-        advisor_id: form.advisor_id ? Number(form.advisor_id) : null,
-      });
-      setSuccess(`Đã tạo lớp hành chính ${form.name}`);
-      setForm(EMPTY);
-      setShowForm(false);
+      if (editing) {
+        await api.put(`/homeroom-classes/${editing.id}`, body);
+        setSuccess(`Đã cập nhật lớp hành chính ${body.name}`);
+        closeForm();
+      } else {
+        await api.post("/homeroom-classes", body);
+        setSuccess(`Đã tạo lớp hành chính ${body.name}`);
+        setForm(EMPTY);
+        setShowForm(false);
+      }
       await load();
     } catch (err) {
       setError(errMsg(err));
@@ -75,9 +133,9 @@ export default function OfficeHomeroomsPage() {
 
       {showForm && (
         <Card
-          title="Thêm lớp hành chính"
+          title={editing ? `Sửa lớp ${editing.name}` : "Thêm lớp hành chính"}
           actions={
-            <Button variant="ghost" size="sm" onClick={() => setShowForm(false)}>
+            <Button variant="ghost" size="sm" onClick={closeForm}>
               Đóng
             </Button>
           }
@@ -110,7 +168,7 @@ export default function OfficeHomeroomsPage() {
               </select>
             </div>
             <div className="md:col-span-2">
-              <Button type="submit">Tạo lớp</Button>
+              <Button type="submit">{editing ? "Lưu thay đổi" : "Tạo lớp"}</Button>
             </div>
           </form>
         </Card>
@@ -124,6 +182,7 @@ export default function OfficeHomeroomsPage() {
             { key: "cohort", label: "Khóa" },
             { key: "advisor", label: "Cố vấn" },
             { key: "count", label: "Số SV", align: "right" },
+            { key: "action", label: "" },
           ]}
           rows={homerooms}
           empty={
@@ -142,6 +201,27 @@ export default function OfficeHomeroomsPage() {
               <Cell>{h.cohort ?? "—"}</Cell>
               <Cell>{h.advisor_name ?? "—"}</Cell>
               <NumCell>{h.student_count ?? 0}</NumCell>
+              <Cell className="text-right">
+                {confirmId === h.id ? (
+                  <span className="inline-flex gap-2">
+                    <Button size="sm" variant="danger" onClick={() => doDelete(h.id)}>
+                      Chắc chắn xóa
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmId(null)}>
+                      Giữ lại
+                    </Button>
+                  </span>
+                ) : (
+                  <span className="inline-flex gap-1">
+                    <Button size="sm" variant="secondary" onClick={() => startEdit(h)}>
+                      Sửa
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => setConfirmId(h.id)}>
+                      Xóa
+                    </Button>
+                  </span>
+                )}
+              </Cell>
             </Row>
           )}
         />

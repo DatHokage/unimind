@@ -18,6 +18,7 @@ class StudentCreate(BaseModel):
 
 
 class StudentUpdate(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=20)
     name: str | None = None
     dob: datetime.date | None = None
     major_id: int | None = None

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth_dependency import get_current_user, require_role
-from app.models import Student
+from app.models import Enrollment, HomeroomClass, Major, Student
 from app.schemas.student import StudentCreate, StudentOut, StudentPage, StudentUpdate
 from app.services.user_service import create_user_account
 
@@ -108,8 +108,39 @@ def update_student(
     student = db.get(Student, student_id)
     if student is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    data = body.model_dump(exclude_unset=True)
+    if "code" in data and data["code"] != student.code:
+        if db.scalar(select(Student).where(Student.code == data["code"], Student.id != student_id)):
+            raise HTTPException(status_code=409, detail="Mã sinh viên đã tồn tại")
+    if data.get("major_id") is not None and db.get(Major, data["major_id"]) is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy ngành học")
+    if data.get("class_id") is not None and db.get(HomeroomClass, data["class_id"]) is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy lớp hành chính")
+    for field, value in data.items():
         setattr(student, field, value)
     db.commit()
     db.refresh(student)
     return _student_out(db, student)
+
+
+@router.delete("/{student_id}", status_code=200)
+def delete_student(
+    student_id: int,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("training_office")),
+):
+    """Xóa sinh viên — chặn nếu đã có đăng ký học phần (bảo toàn dữ liệu điểm)."""
+    student = db.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
+    has_enrollment = db.scalar(
+        select(func.count(Enrollment.id)).where(Enrollment.student_id == student_id)
+    ) or 0
+    if has_enrollment:
+        raise HTTPException(
+            status_code=409,
+            detail="Không thể xóa: sinh viên đã có đăng ký học phần",
+        )
+    db.delete(student)
+    db.commit()
+    return {"detail": f"Đã xóa sinh viên {student.code}"}

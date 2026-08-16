@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Users,
   User,
+  BookMarked,
   Library,
   Presentation,
   PenLine,
@@ -57,6 +58,7 @@ export const MENU = {
       items: [
         { to: "/office/students", icon: Users, label: "Sinh viên" },
         { to: "/office/lecturers", icon: User, label: "Giảng viên" },
+        { to: "/office/majors", icon: BookMarked, label: "Ngành học" },
         { to: "/office/homerooms", icon: School, label: "Lớp hành chính" },
         { to: "/office/courses", icon: Library, label: "Học phần" },
         { to: "/office/course-classes", icon: Presentation, label: "Lớp học phần" },

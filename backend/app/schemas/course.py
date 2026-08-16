@@ -9,6 +9,13 @@ class CourseCreate(BaseModel):
     prerequisite_course_ids: list[int] = []
 
 
+class CourseUpdate(BaseModel):
+    name: str | None = None
+    credits: int | None = Field(default=None, ge=1, le=20)
+    counted_in_gpa: bool | None = None
+    prerequisite_course_ids: list[int] | None = None
+
+
 class CourseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

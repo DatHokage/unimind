@@ -33,12 +33,24 @@ def _enrollment_out(e: Enrollment) -> EnrollmentOut:
 def enroll(
     body: EnrollmentCreate,
     db: Session = Depends(get_db),
-    user: dict = Depends(require_role("student")),
+    user: dict = Depends(require_role("student", "training_office")),
 ):
-    """Sinh viên tự đăng ký; server validate sĩ số + tiên quyết + trùng lịch."""
-    student_id = user["student_id"]
-    if student_id is None or db.get(Student, student_id) is None:
-        raise HTTPException(status_code=403, detail="Tài khoản chưa gắn hồ sơ sinh viên")
+    """Sinh viên tự đăng ký, hoặc phòng đào tạo đăng ký hộ (truyền student_id).
+
+    Server validate sĩ số + tiên quyết + trùng lịch trong cả 2 trường hợp.
+    """
+    if user["role"] == "training_office":
+        if body.student_id is None:
+            raise HTTPException(
+                status_code=400, detail="Thiếu student_id khi đăng ký hộ sinh viên"
+            )
+        if db.get(Student, body.student_id) is None:
+            raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
+        student_id = body.student_id
+    else:
+        student_id = user["student_id"]
+        if student_id is None or db.get(Student, student_id) is None:
+            raise HTTPException(status_code=403, detail="Tài khoản chưa gắn hồ sơ sinh viên")
     enrollment = create_enrollment(db, student_id, body.course_class_id)
     return _enrollment_out(enrollment)
 

@@ -14,6 +14,12 @@ class LecturerCreate(BaseModel):
     account: LecturerAccountCreate | None = None
 
 
+class LecturerUpdate(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=20)
+    name: str | None = None
+    department: str | None = None
+
+
 class LecturerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
