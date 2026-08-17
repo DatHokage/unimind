@@ -1,12 +1,17 @@
-"""Smoke tính năng quy đổi điểm chữ/hệ 4 + GPA tín chỉ trên server thật (port 8001).
+"""Smoke tính năng quy đổi điểm chữ/hệ 4 + GPA tín chỉ trên server thật.
 
-Chạy độc lập với pytest: dùng httpx gọi API thật trên DB dev.
+Chạy:  python scripts/smoke_grade_conversion.py   (từ backend/, server port 8000;
+       đổi server: set SMOKE_BASE=http://127.0.0.1:8001)
 Các ca mutate điểm đều được restore về giá trị gốc ở cuối.
 """
+import os
 import sys
 import httpx
 
-BASE = "http://127.0.0.1:8001"
+BASE = os.environ.get("SMOKE_BASE", "http://127.0.0.1:8000")
+
+# Chạy trực tiếp "python scripts/smoke_grade_conversion.py" vẫn import được app/*
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
@@ -42,10 +47,10 @@ for total, letter, score4 in cases:
     check(f"convert({total}) == {letter}/{score4}", got == (letter, score4), str(got))
 check("convert(None) == (None, None)", convert_score10(None) == (None, None))
 
-h_stu1 = login("student1")   # SV001 — TH1 7.5
-h_stu2 = login("student2")   # SV002 — TH1 4.0
+h_stu1 = login("DTC001")   # SV001 — TH1 7.5
+h_stu2 = login("DTC002")   # SV002 — TH1 4.0
 h_office = login("ptdt")
-h_lecturer = login("lecturer1")
+h_lecturer = login("DTCGV001")
 
 # ---------- 2) Bảng điểm trả điểm chữ / hệ 4 / kết quả ----------
 r_me = httpx.get(f"{BASE}/auth/me", headers=h_stu1)
@@ -53,7 +58,7 @@ sid1 = r_me.json().get("student_id") if r_me.status_code == 200 else None
 
 if sid1:
     g1 = httpx.get(f"{BASE}/grades/student/{sid1}", headers=h_stu1).json()
-    check("student1 có bản ghi điểm", len(g1) >= 1, str(g1)[:200])
+    check("DTC001 có bản ghi điểm", len(g1) >= 1, str(g1)[:200])
     row = next((x for x in g1 if x.get("total_score") is not None), None)
     if row:
         check("SV001 total=7.5 → letter B / score4 3 / đạt",
@@ -81,8 +86,8 @@ if sid2:
     gpa2 = httpx.get(f"{BASE}/grades/student/{sid2}/gpa", headers=h_stu2).json()
     check("SV002 GPA hệ 4 = 1.0", gpa2.get("gpa4") == 1.0, str(gpa2))
 
-# ---------- 3) Courses có counted_in_gpa ----------
-courses = httpx.get(f"{BASE}/courses", headers=h_office).json()
+# ---------- 3) Courses có counted_in_gpa (endpoint phân trang) ----------
+courses = httpx.get(f"{BASE}/courses", params={"size": 100}, headers=h_office).json()["data"]
 check("course list có counted_in_gpa", all("counted_in_gpa" in c for c in courses), str(courses)[:200])
 
 # ---------- 4) Mutation: đổi điểm → tự quy đổi lại (rồi restore) ----------
@@ -123,7 +128,7 @@ if sid1:
 # ---------- 5) Permission: student không xem GPA người khác ----------
 if sid1 and sid2:
     r = httpx.get(f"{BASE}/grades/student/{sid2}/gpa", headers=h_stu1)
-    check("student1 xem GPA của student2 → 403", r.status_code == 403, str(r.status_code))
+    check("DTC001 xem GPA của DTC002 → 403", r.status_code == 403, str(r.status_code))
 
 print("\n" + ("TẤT CẢ PASS ✅" if ok else "CÓ FAIL ❌"))
 sys.exit(0 if ok else 1)

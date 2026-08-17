@@ -1,6 +1,6 @@
-"""Smoke SV004 (student4) — kiểm tra đủ bộ dữ liệu dashboard + GPA mới trên server thật.
+"""Smoke SV004 (DTC004) — kiểm tra đủ bộ dữ liệu dashboard + GPA mới trên server thật.
 
-Chạy:  PYTHONPATH=. python scripts/smoke_student4.py   (từ backend/, server chạy ở port 8000;
+Chạy:  PYTHONPATH=. python scripts/smoke_DTC004.py   (từ backend/, server chạy ở port 8000;
        đổi server: set SMOKE_BASE=http://127.0.0.1:8001)
 Tiên quyết: đã chạy `python -m app.seed` (seed idempotent nên chạy lại được).
 
@@ -22,7 +22,7 @@ import sys
 import httpx
 
 BASE = os.environ.get("SMOKE_BASE", "http://127.0.0.1:8000")
-USERNAME = "student4"
+USERNAME = "DTC004"
 PASSWORD = "password123"
 
 
@@ -114,11 +114,11 @@ def main():
     check("xem GPA sinh viên khác → 403", r.status_code == 403, str(r.status_code))
 
     # ---------- 5) AI course-advice: CTDL đạt 5.5 ≥ 5.0 → đủ tiên quyết OOP/CSDL ----------
-    r = httpx.post(f"{BASE}/ai/course-advice", json={"student_id": sid}, headers=h)
+    r = httpx.post(f"{BASE}/ai/course-advice", json={"student_id": sid}, headers=h, timeout=180)
     check("AI course-advice SV004 → 200, có eligible",
           r.status_code == 200 and len(r.json().get("eligible_classes", [])) >= 1,
           r.text[:200])
-    r = httpx.post(f"{BASE}/ai/study-summary", json={"student_id": sid}, headers=h)
+    r = httpx.post(f"{BASE}/ai/study-summary", json={"student_id": sid}, headers=h, timeout=180)
     check("AI study-summary SV004 → 200 (có GT1 low score trong dữ liệu)",
           r.status_code == 200, r.text[:200])
 

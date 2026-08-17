@@ -22,8 +22,8 @@ from app.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Warm-up chatbot quy chế (tải embedding model + ChromaDB) ở thread riêng
-    # để không chặn server; câu hỏi đầu tiên không phải chờ.
+    # Warm-up chatbot quy chế (mở ChromaDB + kiểm tra key Voyage/OpenRouter)
+    # ở thread riêng để không chặn server; câu hỏi đầu tiên không phải chờ.
     import os
 
     from app.services.rag_service import is_configured, warmup
@@ -62,3 +62,9 @@ app.include_router(ai.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/")
+def root():
+    """Health check cho Render — Render tự GET / để kiểm tra service còn sống."""
+    return {"status": "ok", "message": "UniMinds API is running"}

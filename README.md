@@ -2,7 +2,7 @@
 
 Hệ thống quản lý đào tạo cho cơ sở giáo dục: quản lý sinh viên, giảng viên, học phần, lớp học, đăng ký học phần, nhập điểm và thống kê kết quả học tập — tích hợp AI tư vấn đăng ký môn học, tóm tắt kết quả học tập và chatbot hỏi-đáp quy chế đào tạo (RAG).
 
-**Stack:** FastAPI (Python 3.12) · React + Vite · SQLite (chạy local) hoặc PostgreSQL/Supabase (deploy) · JWT · LangChain + ChromaDB (embedding tiếng Việt chạy local) · LLM qua OpenRouter (fallback Gemini).
+**Stack:** FastAPI (Python 3.12) · React + Vite · SQLite (chạy local) hoặc PostgreSQL/Supabase (deploy) · JWT · LLM qua OpenRouter (fallback Gemini) · Chatbot quy chế: ChromaDB + embedding qua Voyage AI API (không tải model local, chạy được cả trên Render free tier 512MB).
 
 | Tài liệu | Nội dung |
 |---|---|
@@ -51,7 +51,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-> Lần đầu `pip install` có thể mất **5–10 phút** vì phải tải PyTorch + các thư viện AI (~2GB). Máy cấu hình yếu cứ để chạy, đừng tưởng bị treo.
+> `requirements.txt` gồm các thư viện cốt lõi (fastapi, sqlalchemy, httpx, chromadb, python-docx) — không có torch/sentence-transformers/langchain nên cài nhanh, máy nhẹ. **Chatbot quy chế** chạy bằng embedding gọi qua **Voyage AI API** (không tải model local), chỉ cần điền `VOYAGE_API_KEY` + 1 key LLM (`OPENROUTER_API_KEY` hoặc `GOOGLE_API_KEY`) trong `backend/.env` là dùng được.
 
 ### Bước 2 — Tạo file cấu hình `.env`
 
@@ -66,7 +66,8 @@ SUPABASE_DB_URL=sqlite:///./ql_daotao.db
 ```
 
 - Chạy thử ở máy mình: **giữ nguyên** dòng trên là đủ.
-- Muốn bật AI tư vấn + chatbot quy chế: điền `OPENROUTER_API_KEY` (lấy miễn phí tại [openrouter.ai/keys](https://openrouter.ai/keys)); có thể điền thêm `GOOGLE_API_KEY` ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)) để dự phòng. **Không có key nào thì mọi chức năng quản lý vẫn chạy**, chỉ có AI trả fallback.
+- Muốn bật **chatbot quy chế**: điền `VOYAGE_API_KEY` ([dash.voyageai.com](https://dash.voyageai.com/)) — key này **bắt buộc** vì embedding câu hỏi gọi qua Voyage AI API; thêm `OPENROUTER_API_KEY` ([openrouter.ai/keys](https://openrouter.ai/keys)) để có LLM trả lời (`GOOGLE_API_KEY` là dự phòng).
+- Muốn bật AI tư vấn đăng ký + tóm tắt học tập: chỉ cần điền `GOOGLE_API_KEY` ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)) — Gemini là LLM chính của 2 chức năng này; `OPENROUTER_API_KEY` là dự phòng — Gemini lỗi/bị lọc an toàn thì hệ thống tự chuyển sang OpenRouter. **Không có key nào thì mọi chức năng quản lý vẫn chạy**, chỉ có AI trả fallback.
 - `SECRET_KEY`: nên đổi thành chuỗi ngẫu nhiên dài (bắt buộc khi deploy).
 
 ### Bước 3 — Tạo bảng + nạp dữ liệu mẫu + chạy backend
@@ -79,7 +80,7 @@ uvicorn app.main:app --reload
 
 Backend chạy tại **http://localhost:8000** — xem danh sách API tại http://localhost:8000/docs.
 
-> Lần khởi động đầu tiên, server tự tải embedding model tiếng Việt (~500MB, dùng một lần rồi cache) cho chatbot quy chế ở thread nền. Không muốn tải thì chạy với biến môi trường `RAG_WARMUP=0`.
+> Chatbot quy chế **không tải model nào khi khởi động** — vector store đã dựng sẵn trong `backend/vectorstore/`, embedding câu hỏi gọi qua Voyage AI API lúc hỏi. Biến môi trường `RAG_WARMUP=0` nếu muốn tắt bước mở sẵn ChromaDB khi server chạy lên.
 
 ### Bước 4 — Chạy frontend (mở một cửa sổ terminal **mới**)
 
@@ -89,7 +90,7 @@ npm install
 npm run dev
 ```
 
-Mở **http://localhost:5173**, đăng nhập `student1` / `password123` và dùng thử. (Frontend dev tự proxy `/api` sang backend port 8000 — đã cấu hình sẵn, không cần làm gì thêm.)
+Mở **http://localhost:5173**, đăng nhập `DTC001` / `password123` và dùng thử. (Frontend dev tự proxy `/api` sang backend port 8000 — đã cấu hình sẵn, không cần làm gì thêm.)
 
 ### Đặt lại dữ liệu về trạng thái demo ban đầu
 
@@ -105,26 +106,29 @@ python -m app.seed
 
 ## Tài khoản demo
 
-Sau khi seed, mật khẩu chung cho tất cả tài khoản là `password123`:
+Sau khi seed, mật khẩu chung cho tất cả tài khoản là `password123`. **Tên đăng nhập chính là mã** của người dùng và **không phân biệt hoa/thường** (gõ `dtc001` vẫn đăng nhập được):
 
 | Username | Vai trò | Ghi chú dữ liệu |
 |---|---|---|
+| `DTCAD001` | Admin (quản trị hệ thống) | quyền phòng đào tạo + quản trị |
 | `ptdt` | Phòng đào tạo | nhập điểm thi, CRUD, thống kê |
-| `lecturer1` | Giảng viên Trần Thị Bình | dạy mọi lớp trong dữ liệu mẫu |
-| `advisor1` | Cố vấn Nguyễn Văn An | phụ trách CNTT1-K12 + CNTT2-K12 |
-| `student1` | SV001 Phạm Văn Nhất | đã đạt TH1 (7.5) → đăng ký được CTDL/CSDL |
-| `student2` | SV002 Lê Thị Nhị | trượt TH1 (4.0) → demo chặn tiên quyết |
-| `student3` | SV003 Hoàng Văn Tam | đạt TH1 (6.0) |
-| `student4` | SV004 Đỗ Thị Tư | lớp CNTT2-K12, dữ liệu đủ 3 học kỳ: môn đạt B/C, môn trượt F, môn đang học, HP không tính GPA (GDTC1) |
+| `DTCGV001` | Giảng viên Nguyễn Văn An | dạy TH1.A, CTDL.A, OOP.A |
+| `DTCGV002` | Giảng viên Trần Thị Bình | dạy CTDL.B, OOP.B |
+| `DTCCV001` | Cố vấn Ngô Thị Lan | phụ trách CNTT1-K12 + CNTT2-K12 |
+| `DTC001` | Sinh viên Phạm Văn Nhất | đã đạt TH1 (7.5) → đăng ký được CTDL/CSDL |
+| `DTC002` | Sinh viên Lê Thị Nhị | TH1 4.0 (< 5.0) → demo chặn tiên quyết |
+| `DTC003` | Sinh viên Hoàng Văn Tam | đạt TH1 (6.0), đang học CSDL.A |
+| `DTC004` | Sinh viên Đỗ Thị Tư | lớp CNTT2-K12, dữ liệu đủ 3 học kỳ: môn đạt B/C, môn trượt F, môn đang học, HP không tính GPA (GDTC1) |
+| `DTC005`..`DTC015` | Sinh viên DTC005..DTC015 | dữ liệu phân trang/tìm kiếm danh sách sinh viên |
 
 **Kịch bản demo nhanh**
 
-1. `student1` → *Đăng ký học phần*: bấm AI tư vấn → AI gợi ý CTDL/CSDL/GDTC1 kèm lý do; đăng ký CTDL.A thành công.
-2. `student2` đăng ký CTDL.A → bị chặn *"chưa hoàn thành học phần tiên quyết"*.
-3. `student1` đăng ký CSDL.A → *"lớp đã đầy"*; đăng ký OOP.A → trùng lịch / chưa đạt tiên quyết.
-4. `lecturer1` nhập điểm quá trình OK; gọi endpoint nhập điểm thi → **403** (chỉ phòng đào tạo được nhập điểm thi).
+1. `DTC001` → *Đăng ký học phần*: bấm AI tư vấn → AI gợi ý CTDL/CSDL/GDTC1 kèm lý do; đăng ký CTDL.A thành công.
+2. `DTC002` đăng ký CTDL.A → bị chặn *"chưa hoàn thành học phần tiên quyết"*.
+3. `DTC001` đăng ký CSDL.A → *"lớp đã đầy"*; đăng ký OOP.A → trùng lịch / chưa đạt tiên quyết.
+4. `DTCGV001` nhập điểm quá trình OK; gọi endpoint nhập điểm thi → **403** (chỉ phòng đào tạo được nhập điểm thi).
 5. `ptdt` nhập điểm thi → điểm tổng kết + điểm chữ + hệ 4 tự tính; gọi endpoint nhập điểm quá trình → **403**.
-6. `advisor1` xem đúng 2 lớp phụ trách → mở một sinh viên thấy bảng điểm + bấm *"Tạo nhận xét"* để AI nhận xét.
+6. `DTCCV001` xem đúng 2 lớp phụ trách → mở một sinh viên thấy bảng điểm + bấm *"Tạo nhận xét"* để AI nhận xét.
 7. Chat quy chế (cần key LLM): hỏi *"Sinh viên bị cấm thi khi nào?"* → trả lời kèm trích dẫn Điều / Khoản / trang từ Sổ tay sinh viên.
 
 ---
@@ -143,10 +147,13 @@ Các script kiểm tra thêm (cần server đang chạy): `scripts\smoke_student
 
 ## Chatbot quy chế (RAG)
 
-- Vector store dựng sẵn từ **Sổ tay sinh viên 2024–2025** nằm trong `backend/vectorstore/` (đã commit ~11MB, clone về là có). Embedding tiếng Việt chạy **local 100%** — chỉ bước trả lời mới gọi LLM.
-- Endpoint `POST /ai/regulation-chat` trả `answer` + `sources` (Điều / Khoản / trang) + `provider`; ngữ cảnh hội thoại giữ theo `session_id`.
-- **Cập nhật quy chế mới:** đặt file DOCX vào `backend/data/raw/` → chạy `python -m src.ingestion.build_index` → commit + push thư mục `backend/vectorstore/`.
-- Thử retrieval không cần API key: `python -m src.rag.retriever "cau hoi"`.
+> Cần `VOYAGE_API_KEY` trong `backend/.env` (bắt buộc — embedding gọi qua Voyage AI API) + 1 key LLM (`OPENROUTER_API_KEY` chính, hoặc `GOOGLE_API_KEY` dự phòng). Không có key thì endpoint trả 503 kèm hướng dẫn, các chức năng khác không ảnh hưởng.
+
+- Vector store dựng sẵn từ **Sổ tay sinh viên 2024–2025** nằm trong `backend/vectorstore/` (đã commit, clone về là có). Câu hỏi được nhúng bằng **Voyage AI API** (`voyage-4`, `input_type="query"`) — **không tải model local** nên chạy được cả trên Render free tier 512MB; chỉ bước trả lời mới gọi LLM (OpenRouter, fallback Gemini).
+- Câu hỏi **ngoài quy chế** (không chunk nào khớp) → chatbot trả "không tìm thấy thông tin trong quy chế" và **không gọi LLM** — không bịa câu trả lời.
+- Endpoint `POST /ai/regulation-chat` trả `answer` + `sources` (Điều / Khoản / trang) + `provider` + `model`; ngữ cảnh hội thoại giữ theo `session_id`.
+- **Cập nhật quy chế mới:** đặt file DOCX vào `backend/data/raw/` → chạy `python scripts/rebuild_vector_store.py` → commit + push thư mục `backend/vectorstore/`. Script nhúng toàn bộ chunk qua Voyage API (`input_type="document"`) rồi mới xóa index cũ (lỗi giữa chừng thì vector store cũ vẫn còn nguyên). Đổi `VOYAGE_MODEL` cũng phải rebuild — mỗi model là một không gian vector riêng.
+- Thử retrieval: `python -m src.rag.retriever "cau hoi"` (cần `VOYAGE_API_KEY` để nhúng câu hỏi).
 
 ---
 
@@ -154,10 +161,10 @@ Các script kiểm tra thêm (cần server đang chạy): `scripts\smoke_student
 
 Khi đưa lên mạng: **Vercel** (frontend) + **Render** (backend) + **Supabase** (Postgres). Toàn bộ thiết lập chi tiết (từng bước trên dashboard, biến môi trường, lưu ý free tier, checklist trước ngày bảo vệ) ở [`DEPLOY.md`](DEPLOY.md). Tóm tắt:
 
-1. **Supabase**: tạo project → lấy connection string **cổng 5432 direct** (không dùng pooler 6543).
+1. **Supabase**: tạo project → Settings → Database → Connection Pooling → copy connection string của **Session Pooler** (host `aws-0-<region>.pooler.supabase.com`, port **5432**, user `postgres.<project-ref>`). KHÔNG dùng direct connection `db.<ref>.supabase.co` — host đó chỉ có IPv6 ở nhiều region, Render free tier không nối được.
 2. **Render**: New Web Service, Root Directory `backend`, Build Command:
-   `pip install -r requirements.txt && python -m src.ingestion.build_index && alembic upgrade head && python -m app.seed`
-   (kèm biến môi trường `SKIP_INDEX_BUILD_IF_NO_DOCS=1` — chi tiết ở DEPLOY.md mục 2).
+   `pip install -r requirements.txt && alembic upgrade head && python -m app.seed`
+   (chatbot quy chế chạy được trên Render free 512MB vì embedding gọi qua Voyage AI API, không tải model local — cần điền `VOYAGE_API_KEY` + `OPENROUTER_API_KEY` ở tab Environment; chi tiết ở DEPLOY.md mục 2).
 3. **Vercel**: import repo, Root Directory `frontend`, biến `VITE_API_BASE_URL=https://<ten>.onrender.com`.
 4. Quay lại Render điền `CORS_ORIGINS=https://<domain>.vercel.app` rồi redeploy.
 
@@ -171,9 +178,9 @@ Khi đưa lên mạng: **Vercel** (frontend) + **Render** (backend) + **Supabase
 |---|---|
 | `uvicorn: command not found` | Chưa activate venv — chạy lại `.venv\Scripts\activate` |
 | `address already in use` khi chạy uvicorn | Port 8000 bị chiếm — tắt chương trình khác hoặc chạy `uvicorn app.main:app --port 8001 --reload` |
-| `pip install` rất lâu | Bình thường — PyTorch và thư viện AI ~2GB, chỉ chậm lần đầu |
+| `pip install` rất lâu | Ít gặp — `requirements.txt` không có torch/sentence-transformers; nếu chậm thường do mạng, thử `pip install -r requirements.txt -i https://pypi.org/simple` |
 | Frontend báo lỗi CORS / không gọi được API | Backend chưa chạy, hoặc chạy không đúng port 8000 |
-| Chat quy chế trả 503 | Chưa điền `OPENROUTER_API_KEY` / `GOOGLE_API_KEY` trong `backend/.env` |
+| Chat quy chế trả 503 | Chưa điền `VOYAGE_API_KEY` (bắt buộc cho embedding) trong `backend/.env`, hoặc chưa rebuild vector store sau khi đổi `VOYAGE_MODEL` (retriever tự phát hiện lệch model và chặn kèm hướng dẫn) |
 | `ModuleNotFoundError: No module named 'app'` | Đang chạy lệnh ngoài thư mục `backend/`, hoặc chưa activate venv |
 | Dữ liệu demo bị lộn xộn sau khi thử | Xóa `backend/ql_daotao.db` rồi chạy lại `alembic upgrade head` + `python -m app.seed` |
 | Lỗi connect database dù đã dùng SQLite | File `.env` đang trỏ Postgres — đổi `SUPABASE_DB_URL=sqlite:///./ql_daotao.db` |
@@ -191,15 +198,15 @@ backend/
     routers/       auth, majors, students, lecturers, homeroom_classes,
                    courses, course_classes, enrollments, schedule, grades,
                    stats, ai
-    services/      enrollment, grade, user, course, ai, llm, prompts, rag_service
+    services/      enrollment, grade, user, course, ai, llm, embedding, prompts, rag_service
     dependencies/  auth_dependency (get_current_user, require_role, get_target_student)
     seed.py        dữ liệu demo idempotent
   alembic/         migrations
-  src/rag/         pipeline RAG chatbot quy chế (LCEL + retriever MMR)
-  src/ingestion/   build vector store từ DOCX
-  vectorstore/     ChromaDB dựng sẵn (đã commit vào repo)
+  src/rag/         pipeline RAG chatbot quy chế (ChromaDB explicit-vector + prompt + LLM)
+  src/ingestion/   parse + chunk DOCX khi rebuild vector store
+  vectorstore/     ChromaDB dựng sẵn (index cũ nhúng Gemini — phải rebuild bằng Voyage voyage-4 trước khi dùng chatbot)
   tests/           pytest backend
-  scripts/         smoke test end-to-end qua HTTP
+  scripts/         smoke test end-to-end, rebuild_vector_store.py, đo RAM
 frontend/
   src/
     pages/         dashboard + trang theo vai trò (student, lecturer, advisor, office)

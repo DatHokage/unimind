@@ -1,13 +1,15 @@
 """
 models.py — Registry cac model LLM mien phi (OpenRouter :free + Gemini free tier).
 
+Vai tro ② trong pipeline RAG: sinh cau tra loi (khong tao vector). OpenRouter
+la lua chon chinh, Gemini la du phong — xem default_selection().
+
 Muc dich:
   - Tu dong lay danh sach model mien phi moi nhat tu API cong khai cua
     OpenRouter (khong can API key), cache 1 gio -> luon co model moi ma
     khong phai sua code.
   - Kem danh sach du phong (DEFAULT_OPENROUTER_MODELS) de van chay duoc
     khi khong goi duoc API (mat mang, chan firewall...).
-  - Factory create_llm() tao chat model LangChain cho tung (provider, model).
 
 Model spec dung chung toan bo du an:
     { "provider": "openrouter" | "gemini", "model": <model_id>, "label": str }
@@ -61,7 +63,7 @@ def _fetch_free_models(limit: int = 25) -> list[str]:
     """
     req = urllib.request.Request(
         OPENROUTER_MODELS_URL,
-        headers={"User-Agent": "chatbot-quyche/1.0 (langchain-rag)"})
+        headers={"User-Agent": "chatbot-quyche/1.0"})
     with urllib.request.urlopen(req, timeout=10) as resp:
         data = json.loads(resp.read().decode("utf-8"))
 
@@ -139,7 +141,8 @@ def gemini_model_id() -> str:
 def list_available_models() -> list[dict]:
     """Danh sach {provider, model, label} kha dung de hien thi tren web.
 
-    Gom: toan bo model OpenRouter :free (chi khi co key) + Gemini (chi khi co key).
+    Gom: toan bo model OpenRouter :free (model chinh — chi khi co key) +
+    Gemini (du phong — chi khi co key).
     """
     models: list[dict] = []
     if openrouter_available():
@@ -149,12 +152,17 @@ def list_available_models() -> list[dict]:
     if gemini_available():
         gid = gemini_model_id()
         models.append({"provider": "gemini", "model": gid,
-                       "label": f"✨ {gid} (Google)"})
+                       "label": f"✨ {gid} (Google — dự phòng)"})
     return models
 
 
 def default_selection() -> dict:
-    """Model mac dinh (cau hinh trong .env hoac dau danh sach kha dung)."""
+    """Model mac dinh (cau hinh trong .env hoac dau danh sach kha dung).
+
+    OpenRouter la lua chon chinh (model tra loi cau hinh trong OPENROUTER_MODEL
+    — doi tu do, ke ca model :free); Gemini chi la du phong khi OpenRouter loi
+    hoac khong co key.
+    """
     if openrouter_available():
         env_model = os.getenv("OPENROUTER_MODEL", "")
         if env_model:
@@ -169,36 +177,3 @@ def default_selection() -> dict:
         return {"provider": "gemini", "model": gid, "label": f"✨ {gid}"}
     return {}
 
-
-def create_llm(provider: str, model_id: str):
-    """Tao chat model LangChain cho 1 (provider, model). Tra ve None neu thieu key.
-
-    max_retries=1: free tier hay 429/het quota -> bao loi nhanh de con
-    chuyen model khac, khong mac ket retry 60s+ ben trong client.
-    """
-    if provider == "openrouter":
-        if not openrouter_available():
-            return None
-        from langchain_openai import ChatOpenAI
-
-        # OpenRouter co API tuong thich OpenAI -> dung ChatOpenAI voi base_url rieng
-        return ChatOpenAI(model=model_id, temperature=0, max_tokens=4096,
-                          api_key=os.getenv("OPENROUTER_API_KEY"),
-                          base_url="https://openrouter.ai/api/v1",
-                          max_retries=1,
-                          default_headers={
-                              # Header tuy chon de OpenRouter xep hang ung dung
-                              "HTTP-Referer": "http://localhost:8501",
-                              "X-Title": "Chatbot Quy che",
-                          })
-    if provider == "gemini":
-        if not gemini_available():
-            return None
-        from langchain_google_genai import ChatGoogleGenerativeAI
-
-        key = os.getenv("GOOGLE_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
-        # Truyen key tuong minh — khong phu thuoc env langchain_google_genai
-        # tu doc (no chi doc GOOGLE_API_KEY, khong biet ten cu GEMINI_API_KEY).
-        return ChatGoogleGenerativeAI(model=model_id, temperature=0,
-                                      google_api_key=key, max_retries=1)
-    return None

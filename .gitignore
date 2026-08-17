@@ -44,11 +44,14 @@ logs/
 
 # ===== Dữ liệu RAG =====
 # RAG chatbot quy che: vectorstore/ được giữ trong repo (11MB, dựng sẵn) để
-# chạy được ngay. Chỉ bỏ qua tài liệu gốc, index phụ và log chat.
+# chạy được ngay. Chỉ bỏ qua tài liệu gốc, index phụ, cache nhúng và log chat.
 backend/data/raw/*.docx
 backend/data/raw/*.pdf
 backend/data/processed/
 backend/logs/
+# Cache vector tạm của scripts/rebuild_vector_store.py (resume sau lỗi 429) —
+# KHÔNG commit: ~20MB, chỉ có ý nghĩa trên máy đang build dở
+backend/vectorstore/.embed_cache_v1.json
 
 # ===== IDE / Editor / OS =====
 .vscode/

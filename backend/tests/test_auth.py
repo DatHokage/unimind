@@ -12,6 +12,15 @@ def test_login_success(client, db):
     assert body["user"]["role"] == "training_office"
 
 
+def test_login_case_insensitive(client, db):
+    db.add(User(username="DTCGV001", password_hash=hash_password("password123"), role="lecturer"))
+    db.commit()
+    for typed in ("DTCGV001", "dtcgv001", "Dtcgv001"):
+        resp = client.post("/auth/login", data={"username": typed, "password": "password123"})
+        assert resp.status_code == 200, typed
+        assert resp.json()["user"]["username"] == "DTCGV001"  # trả về tên gốc trong DB
+
+
 def test_login_wrong_password(client, db):
     db.add(User(username="ptdt", password_hash=hash_password("password123"), role="training_office"))
     db.commit()

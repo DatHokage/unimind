@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -14,7 +14,10 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 
 @router.post("/login", response_model=LoginResponse)
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.username == form.username))
+    # Đăng nhập không phân biệt hoa/thường (VD: dtcgv001 ≡ DTCGV001)
+    user = db.scalar(
+        select(User).where(func.lower(User.username) == form.username.strip().lower())
+    )
     if user is None or not verify_password(form.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Sai tên đăng nhập hoặc mật khẩu")
     return LoginResponse(

@@ -38,12 +38,20 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
-    # LLM — ưu tiên OpenRouter; không có key OpenRouter thì tự fallback sang Gemini.
+    # --- RAG chatbot quy chế: 2 vai trò ĐỘC LẬP ---
+    # ① EMBEDDING — chỉ Voyage AI (tạo vector, KHÔNG sinh câu trả lời):
+    VOYAGE_API_KEY: str = ""
+    # Model embedding cố định — 1 hằng số dùng chung mọi nơi gọi embedding.
+    # ĐỔI model này là PHẢI rebuild vector store (mỗi model = 1 không gian
+    # vector riêng): python scripts/rebuild_vector_store.py
+    VOYAGE_MODEL: str = "voyage-4"
+    # ② LLM SINH CÂU TRẢ LỜI — OpenRouter (chính), Gemini (dự phòng).
+    # Chỉ nhận text thô (chunk + câu hỏi), không dùng để tạo vector.
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODEL: str = "nvidia/nemotron-3-super-120b-a12b:free"
     # Gemini: chấp nhận cả 2 tên biến trong .env — GOOGLE_API_KEY (chuẩn của
-    # SDK Google, pipeline RAG trong src/rag đọc tên này) hoặc GEMINI_API_KEY
-    # (tên cũ của dự án). Đặt biến nào cũng được.
+    # SDK Google) hoặc GEMINI_API_KEY (tên cũ của dự án). Đặt biến nào cũng
+    # được. Với chatbot quy chế, Gemini là LLM dự phòng khi OpenRouter lỗi.
     GOOGLE_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.0-flash"

@@ -23,11 +23,22 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from langchain_core.documents import Document
-
 from src.ingestion.loader import ParsedDocument, Section
+
+
+@dataclass
+class Document:
+    """1 chunk van ban + metadata phan cap.
+
+    Thay the langchain Document (da bo langchain khoi dependencies) —
+    cau truc giu nguyen: noi dung trong page_content, metadata phan cap
+    (phan/chuong/muc/dieu/khoan/so_trang/nguon) trong metadata.
+    """
+    page_content: str
+    metadata: dict = field(default_factory=dict)
 
 # Uoc tinh so ky tu / token cho tieng Viet
 CHARS_PER_TOKEN = 1.7

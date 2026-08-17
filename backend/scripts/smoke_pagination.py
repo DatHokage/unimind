@@ -1,8 +1,13 @@
-"""Smoke nhanh endpoint GET /students phân trang trên server chạy thật (port 8001)."""
+"""Smoke nhanh endpoint GET /students phân trang trên server chạy thật.
+
+Chạy:  python scripts/smoke_pagination.py   (từ backend/, server chạy ở port 8000;
+       đổi server: set SMOKE_BASE=http://127.0.0.1:8001)
+"""
+import os
 import sys
 import httpx
 
-BASE = "http://127.0.0.1:8001"
+BASE = os.environ.get("SMOKE_BASE", "http://127.0.0.1:8000")
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
@@ -30,8 +35,8 @@ check("GET /students?page=0&size=2 → 200", r.status_code == 200, r.text[:150])
 check("response có đủ key data/page/size/totalElements/totalPages",
       all(k in b for k in ("data", "page", "size", "totalElements", "totalPages")), str(b)[:200])
 check("size=2 → đúng 2 bản ghi", len(b.get("data", [])) == 2, str(b)[:200])
-check("totalElements=4, totalPages=2 (seed 4 SV)",
-      b.get("totalElements") == 4 and b.get("totalPages") == 2, str(b)[:200])
+check("totalElements=15, totalPages=8 (seed 15 SV)",
+      b.get("totalElements") == 15 and b.get("totalPages") == 8, str(b)[:200])
 check("page vọng lại = 0, size = 2", b.get("page") == 0 and b.get("size") == 2)
 
 # 2) trang 2 chứa phần còn lại, không trùng trang 1
@@ -41,9 +46,9 @@ ids1 = {s["id"] for s in b["data"]}
 check("trang 2 không trùng trang 1", all(s["id"] not in ids1 for s in r2["data"]))
 
 # 3) search theo mã SV (backend)
-r3 = httpx.get(f"{BASE}/students", params={"search": "SV003"}, headers=h).json()
-check("search 'SV003' → 1 kết quả đúng mã",
-      r3["totalElements"] == 1 and r3["data"][0]["code"] == "SV003", str(r3)[:200])
+r3 = httpx.get(f"{BASE}/students", params={"search": "DTC003"}, headers=h).json()
+check("search 'DTC003' → 1 kết quả đúng mã",
+      r3["totalElements"] == 1 and r3["data"][0]["code"] == "DTC003", str(r3)[:200])
 
 # 4) search theo họ tên (backend, tiếng Việt)
 r4 = httpx.get(f"{BASE}/students", params={"search": "hoàng văn"}, headers=h).json()
@@ -57,8 +62,8 @@ check("search vô nghĩa → 0 kết quả, totalPages=0",
 
 # 6) page vượt quá tổng → mảng rỗng
 r6 = httpx.get(f"{BASE}/students", params={"page": 50, "size": 20}, headers=h).json()
-check("page=50 → data rỗng, totalElements vẫn 4",
-      r6["data"] == [] and r6["totalElements"] == 4, str(r6)[:200])
+check("page=50 → data rỗng, totalElements vẫn 15",
+      r6["data"] == [] and r6["totalElements"] == 15, str(r6)[:200])
 
 # 7) tham số không hợp lệ → 422
 check("page=-1 → 422", httpx.get(f"{BASE}/students", params={"page": -1}, headers=h).status_code == 422)
@@ -66,7 +71,7 @@ check("size=0 → 422", httpx.get(f"{BASE}/students", params={"size": 0}, header
 check("size=500 → 422", httpx.get(f"{BASE}/students", params={"size": 500}, headers=h).status_code == 422)
 
 # 8) student không được list toàn bộ
-r = httpx.post(f"{BASE}/auth/login", data={"username": "student1", "password": "password123"})
+r = httpx.post(f"{BASE}/auth/login", data={"username": "DTC001", "password": "password123"})
 h_stu = {"Authorization": f"Bearer {r.json()['access_token']}"}
 check("student gọi GET /students → 403", httpx.get(f"{BASE}/students", headers=h_stu).status_code == 403)
 

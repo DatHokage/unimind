@@ -13,13 +13,12 @@ python-multipart
 python-dotenv
 pytest
 
-# RAG chatbot quy che (tich hop tu du an rag_langchain)
-langchain>=0.3,<0.4
-langchain-community>=0.3,<0.4
-langchain-core>=0.3,<0.4
-langchain-openai>=0.3,<1.0
-langchain-google-genai>=2.0
-sentence-transformers>=3.0
-chromadb>=0.5
+# Chatbot quy chế (RAG) — embedding gọi qua Voyage AI API, KHÔNG tải model local:
+# - chromadb: lưu + truy vấn vector store. Quan trọng: code luôn truyền vector
+#   tường minh (query_embeddings / embeddings) — KHÔNG để Chroma tự nhúng văn
+#   bản, nên onnxruntime (dependency của chromadb) không bao giờ được tải vào RAM.
+# - python-docx: parse Sổ tay sinh viên (DOCX) khi rebuild vector store
+#   (scripts/rebuild_vector_store.py — chạy local, gọi Voyage API để nhúng).
+# LLM gọi qua HTTP thuần (httpx): OpenRouter + Gemini — KHÔNG cần SDK google.
+chromadb>=1.0
 python-docx>=1.1
-pypdf>=4.0

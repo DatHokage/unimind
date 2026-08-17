@@ -150,7 +150,7 @@ Menu được định nghĩa tập trung tại `config/menuConfig.js`, mỗi rol
 
 - Bên trái: tiêu đề trang hiện tại (`text-2xl`, weight 600) — lấy theo route, KHÔNG lặp lại tên hệ thống (đã có ở sidebar).
 - Bên phải: nút hành động chính của trang đó nếu có (VD trang "Lớp học phần" của `training_office` có nút "+ Mở lớp mới" màu `--color-primary`).
-- Dưới tiêu đề có thể có breadcrumb mỏng (`text-sm`, màu secondary) khi vào sâu (VD "Sinh viên / SV0012 / Bảng điểm").
+- Dưới tiêu đề có thể có breadcrumb mỏng (`text-sm`, màu secondary) khi vào sâu (VD "Sinh viên / DTC012 / Bảng điểm").
 
 ---
 

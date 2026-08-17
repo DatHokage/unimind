@@ -1,3 +1,4 @@
+import httpx
 import pytest
 
 from app.services.llm_service import LLMError, extract_json
@@ -67,6 +68,7 @@ def test_regulation_chat_status(client, db, make_user, monkeypatch):
     monkeypatch.setattr(ai_router, "is_configured", lambda: False)
     monkeypatch.setattr(ai_router, "rag_status", lambda: {
         "vectorstore": False, "openrouter_key": False, "google_key": False,
+        "voyage_key": False, "embedding_model": "voyage-4",
     })
 
     h = make_user(db, role="student")
@@ -135,40 +137,40 @@ def test_course_advice_fallback_when_no_llm(client, db, make_user, make_student,
 
 
 @pytest.mark.anyio
-async def test_call_llm_json_openrouter_then_gemini_fallback(monkeypatch):
-    """call_llm_json: OpenRouter lỗi → tự chuyển sang Gemini."""
+async def test_call_llm_json_gemini_then_openrouter_fallback(monkeypatch):
+    """call_llm_json: Gemini lỗi → tự chuyển sang OpenRouter (Gemini là chính)."""
     from app.services import llm_service
 
     calls = []
 
-    async def fake_openrouter(prompt):
-        calls.append("openrouter")
-        raise llm_service.LLMError("OpenRouter API trả về HTTP 429")
-
     async def fake_gemini(prompt):
         calls.append("gemini")
+        raise llm_service.LLMError("Gemini API trả về HTTP 429")
+
+    async def fake_openrouter(prompt):
+        calls.append("openrouter")
         return {"recommended": [], "notes": "ok"}
 
-    monkeypatch.setattr(llm_service, "call_openrouter_json", fake_openrouter)
     monkeypatch.setattr(llm_service, "call_gemini_json", fake_gemini)
+    monkeypatch.setattr(llm_service, "call_openrouter_json", fake_openrouter)
 
     result = await llm_service.call_llm_json("prompt")
     assert result == {"recommended": [], "notes": "ok"}
-    assert calls == ["openrouter", "gemini"]
+    assert calls == ["gemini", "openrouter"]
 
 
 @pytest.mark.anyio
 async def test_call_llm_json_no_keys_raises(monkeypatch):
     from app.services import llm_service
 
+    async def fake_gemini(prompt):
+        raise llm_service.LLMError("Chưa cấu hình GOOGLE_API_KEY (hoặc GEMINI_API_KEY)")
+
     async def fake_openrouter(prompt):
         raise llm_service.LLMError("Chưa cấu hình OPENROUTER_API_KEY")
 
-    async def fake_gemini(prompt):
-        raise llm_service.LLMError("Chưa cấu hình GEMINI_API_KEY")
-
-    monkeypatch.setattr(llm_service, "call_openrouter_json", fake_openrouter)
     monkeypatch.setattr(llm_service, "call_gemini_json", fake_gemini)
+    monkeypatch.setattr(llm_service, "call_openrouter_json", fake_openrouter)
 
     with pytest.raises(LLMError):
         await llm_service.call_llm_json("prompt")
@@ -180,3 +182,278 @@ def test_extract_json_variants():
     assert extract_json('Here you go: {"a": {"b": 2}} thanks') == {"a": {"b": 2}}
     with pytest.raises(LLMError):
         extract_json("không có json nào cả")
+
+
+@pytest.mark.anyio
+async def test_call_llm_text_openrouter_success_no_gemini(monkeypatch):
+    """OpenRouter (chính) thành công → trả ngay, KHÔNG gọi sang Gemini."""
+    from app.core.config import settings
+    from app.services import llm_service
+
+    calls = []
+    openrouter_ok = {"choices": [{"message": {"content": "tra loi tu openrouter"}}]}
+
+    class _FakeResponse:
+        def __init__(self, data, status=200, text=""):
+            self._data = data
+            self.status_code = status
+            self.text = text
+
+        def json(self):
+            return self._data
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, **kwargs):
+            calls.append(url)
+            return _FakeResponse(openrouter_ok)
+
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "test-or-key")
+    monkeypatch.setattr(settings, "GOOGLE_API_KEY", "test-gemini-key")
+    monkeypatch.setattr(llm_service.httpx, "AsyncClient", _FakeClient)
+
+    text, provider, model = await llm_service.call_llm_text("hi")
+    assert text == "tra loi tu openrouter"
+    assert provider == "openrouter"
+    assert model == settings.OPENROUTER_MODEL
+    # Chỉ 1 cuộc gọi — OpenRouter thành công là dừng, không đụng tới Gemini
+    assert len(calls) == 1
+    assert "openrouter" in calls[0]
+
+
+@pytest.mark.anyio
+async def test_call_llm_text_openrouter_error_falls_back_gemini(monkeypatch):
+    """OpenRouter (chính) bị rate-limit 429 → tự fallback sang Gemini,
+    không để lỗi lan tới người dùng khi còn phương án dự phòng."""
+    from app.core.config import settings
+    from app.services import llm_service
+
+    gemini_ok = {"candidates": [{"finishReason": "STOP",
+                                 "content": {"parts": [{"text": "tra loi tu gemini"}]}}]}
+    calls = []
+
+    class _FakeResponse:
+        def __init__(self, data=None, status=200, text=""):
+            self._data = data
+            self.status_code = status
+            self.text = text
+
+        def json(self):
+            return self._data
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, **kwargs):
+            calls.append(url)
+            if "openrouter" in url:
+                return _FakeResponse(status=429, text="rate limited")
+            return _FakeResponse(gemini_ok)
+
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "test-or-key")
+    monkeypatch.setattr(settings, "GOOGLE_API_KEY", "test-gemini-key")
+    monkeypatch.setattr(llm_service.httpx, "AsyncClient", _FakeClient)
+
+    text, provider, model = await llm_service.call_llm_text("hi")
+    assert text == "tra loi tu gemini"
+    assert provider == "gemini"
+    assert model == settings.GEMINI_MODEL
+    assert len(calls) == 2  # openrouter 429 -> gọi tiếp gemini
+    assert "openrouter" in calls[0]
+    assert "generativelanguage" in calls[1]
+
+
+@pytest.mark.anyio
+async def test_call_llm_text_both_fail_raises(monkeypatch):
+    """Cả OpenRouter lẫn Gemini đều lỗi → LLMError (không crash 500)."""
+    from app.services import llm_service
+
+    async def broken(provider, prompt, system=""):
+        raise llm_service.LLMError(f"{provider}: loi")
+
+    monkeypatch.setattr(llm_service, "_call_chat_text", broken)
+
+    with pytest.raises(LLMError, match="openrouter.*gemini"):
+        await llm_service.call_llm_text("hi")
+
+
+# ---------- Pipeline RAG (mock collection + mock LLM, không gọi API thật) ----------
+
+class _FakeCollection:
+    """Giả lập Chroma collection: query() trả kết quả định trước."""
+
+    def __init__(self, result):
+        self._result = result
+        self.last_kwargs = None
+
+    def query(self, **kwargs):
+        self.last_kwargs = kwargs
+        return self._result
+
+
+def _patch_pipeline(monkeypatch, collection, llm_text=None, embedding=None):
+    """Ráp pipeline RAG với các phần giả lập; trả về dict để kiểm tra sau."""
+    import types
+
+    from app.services import embedding_service, llm_service
+    from app.services import rag_service
+
+    async def fake_get_embedding(text, input_type="document"):
+        fake_get_embedding.last_input_type = input_type
+        return embedding if embedding is not None else [0.01] * 8
+
+    fake_get_embedding.last_input_type = None
+
+    async def fake_call_llm_text(prompt, system=""):
+        # Mặc định OpenRouter — LLM chính của chatbot quy chế (Voyage chỉ embed)
+        return llm_text(prompt, system) if llm_text else (
+            "trả lời mẫu", "openrouter", "test-model:free")
+
+    fake_retriever = types.SimpleNamespace(get_collection=lambda: collection)
+
+    monkeypatch.setattr(rag_service, "_ensure_ready", lambda: None)
+    monkeypatch.setattr(rag_service, "_get_retriever_module", lambda: fake_retriever)
+    monkeypatch.setattr(embedding_service, "get_embedding", fake_get_embedding)
+    monkeypatch.setattr(llm_service, "call_llm_text", fake_call_llm_text)
+    return {"rag_service": rag_service,
+            "fake_get_embedding": fake_get_embedding}
+
+
+@pytest.mark.anyio
+async def test_answer_regulation_question_in_scope(monkeypatch):
+    """Câu hỏi trong vùng phủ quy chế → answer + sources + provider/model,
+    câu hỏi nhúng bằng Voyage input_type='query', ChromaDB được truy vấn bằng
+    query_embeddings tường minh (KHÔNG query_texts)."""
+    chunk = ("Phần I > Chương II > Quy chế đào tạo > Điều 12. Cấm thi\n"
+             "Sinh viên vắng quá 20% số buổi bị cấm thi.")
+    meta = {"phan": "Phần I", "chuong": "Chương II", "chuong_con": "",
+            "muc": "A. Quy chế đào tạo", "trich": "", "dieu": "Điều 12",
+            "ten_dieu": "Cấm thi", "khoan": "1", "so_trang": 45,
+            "nguon": "Sổ tay sinh viên", "text": chunk}
+    collection = _FakeCollection({
+        "documents": [[chunk]], "metadatas": [[meta]], "distances": [[0.3]],
+    })
+
+    def fake_llm(prompt, system):
+        assert "Điều 12" in system        # ngữ cảnh đã ghép vào system prompt
+        assert "Câu hỏi:" in prompt
+        return ("Theo Điều 12, vắng quá 20% bị cấm thi (Điều 12, Quy chế đào tạo, trang ~45).",
+                "openrouter", "test-model:free")
+
+    ctx = _patch_pipeline(monkeypatch, collection, llm_text=fake_llm)
+    rag_service = ctx["rag_service"]
+
+    result = await rag_service.answer_regulation_question(
+        "Khi nào bị cấm thi?", session_id="t-in-scope")
+
+    assert "Điều 12" in result["answer"]
+    assert result["provider"] == "openrouter"
+    assert result["model"] == "test-model:free"
+    assert len(result["sources"]) == 1
+    assert result["sources"][0]["dieu"] == "Điều 12"
+    assert result["sources"][0]["so_trang"] == 45
+    # Câu hỏi nhúng bằng Voyage với input_type="query" (khác "document" lúc build)
+    assert ctx["fake_get_embedding"].last_input_type == "query"
+    # Vector truyền tường minh — tuyệt đối không để Chroma tự nhúng văn bản
+    assert "query_embeddings" in collection.last_kwargs
+    assert "query_texts" not in collection.last_kwargs
+    # Lịch sử hội thoại được lưu server-side
+    assert ("t-in-scope", "", "") in rag_service._sessions
+    rag_service._sessions.clear()
+
+
+@pytest.mark.anyio
+async def test_answer_regulation_question_out_of_scope_no_llm(monkeypatch):
+    """Câu hỏi ngoài vùng phủ (không chunk nào) → 'không tìm thấy', KHÔNG gọi LLM."""
+    collection = _FakeCollection({"documents": [[]], "metadatas": [[]], "distances": [[]]})
+    called = {"n": 0}
+
+    def fake_llm(prompt, system):
+        called["n"] += 1
+        raise AssertionError("KHÔNG được gọi LLM cho câu hỏi ngoài vùng phủ")
+
+    ctx = _patch_pipeline(monkeypatch, collection, llm_text=fake_llm)
+    rag_service = ctx["rag_service"]
+
+    result = await rag_service.answer_regulation_question(
+        "Giá vàng hôm nay bao nhiêu?", session_id="t-oos")
+
+    assert result["answer"] == "Toi khong tim thay thong tin nay trong quy che."
+    assert result["sources"] == []
+    assert called["n"] == 0
+    rag_service._sessions.clear()
+
+
+@pytest.mark.anyio
+async def test_answer_regulation_question_embedding_error(monkeypatch):
+    """Embedding API lỗi → RagLLMError (không phải crash 500)."""
+    import types
+
+    from app.services import embedding_service, rag_service
+    from app.services.embedding_service import EmbeddingError
+
+    async def broken_embedding(text, input_type="document"):
+        raise EmbeddingError("Voyage API HTTP 429")
+
+    monkeypatch.setattr(rag_service, "_ensure_ready", lambda: None)
+    monkeypatch.setattr(rag_service, "_get_retriever_module",
+                        lambda: types.SimpleNamespace(get_collection=lambda: None))
+    monkeypatch.setattr(embedding_service, "get_embedding", broken_embedding)
+
+    with pytest.raises(rag_service.RagLLMError, match="embedding"):
+        await rag_service.answer_regulation_question("hi", session_id="t-err")
+
+
+@pytest.mark.anyio
+async def test_answer_regulation_question_missing_collection(monkeypatch):
+    """Vector store chưa build (collection lỗi) → RagNotAvailableError (503)."""
+    import types
+
+    from app.services import rag_service
+
+    def broken_collection():
+        raise FileNotFoundError("Chua co collection 'quy_che' — chay rebuild")
+
+    _patch_pipeline(monkeypatch, _FakeCollection(None))
+    monkeypatch.setattr(rag_service, "_get_retriever_module",
+                        lambda: types.SimpleNamespace(get_collection=broken_collection))
+
+    with pytest.raises(rag_service.RagNotAvailableError):
+        await rag_service.answer_regulation_question("hi", session_id="t-miss")
+
+
+@pytest.mark.anyio
+async def test_answer_regulation_question_model_mismatch_blocks(monkeypatch):
+    """Index nhúng bằng model khác VOYAGE_MODEL hiện tại → chặn ngay
+    (503 kèm hướng dẫn rebuild), KHÔNG trả lời bằng vector lệch không gian."""
+    import types
+
+    from app.services import rag_service
+
+    def mismatch_collection():
+        raise FileNotFoundError(
+            "Vector store duoc nhúng bang 'model-cu' nhung VOYAGE_MODEL "
+            "hien tai la 'voyage-4' — chay: python scripts/rebuild_vector_store.py")
+
+    _patch_pipeline(monkeypatch, _FakeCollection(None))
+    monkeypatch.setattr(rag_service, "_get_retriever_module",
+                        lambda: types.SimpleNamespace(get_collection=mismatch_collection))
+
+    with pytest.raises(rag_service.RagNotAvailableError, match="rebuild"):
+        await rag_service.answer_regulation_question("hi", session_id="t-model")
+

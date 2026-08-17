@@ -1,7 +1,7 @@
 import datetime
 import os
 
-# Test: không khởi động thread warm-up RAG (tránh tải langchain + embedding model)
+# Test: không khởi động thread warm-up RAG (tránh mở ChromaDB + gọi API Voyage/LLM)
 os.environ["RAG_WARMUP"] = "0"
 
 import pytest

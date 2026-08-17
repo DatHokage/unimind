@@ -78,10 +78,9 @@ def regulation_chat_status(user: dict = Depends(get_current_user)):
 
 @router.get("/regulation-chat/models", response_model=RegulationModelListResponse)
 async def regulation_chat_models(user: dict = Depends(get_current_user)):
-    """Danh sách model miễn phí khả dụng cho dropdown chọn model trong khung chat.
+    """Danh sách model miễn phí khả dụng (OpenRouter :free + Gemini theo .env).
 
-    Trả 503 khi chatbot chưa cấu hình. Danh sách OpenRouter lấy từ API công
-    khai (cache 1h), Gemini là model cấu hình trong .env.
+    Trả 503 khi chatbot chưa cấu hình.
     """
     try:
         data = list_models()
@@ -98,8 +97,9 @@ async def regulation_chat(
     """Chatbot hỏi-đáp quy chế (RAG): truy vấn Sổ tay sinh viên, trả lời kèm
     trích dẫn Điều / Khoản / trang. Ngữ cảnh hội thoại giữ theo session_id.
 
-    provider/model (tùy chọn, từ dropdown trên web): ép dùng model đó trước;
-    model lỗi vẫn tự fallback sang model miễn phí khác. Bỏ trống = mặc định .env.
+    provider/model: nhận để tương thích dropdown trên web (giữ khóa lịch sử
+    theo session); model trả lời thực tế luôn theo cấu hình .env — OpenRouter,
+    lỗi tự fallback Gemini, không cần dropdown ép model như bản LangChain cũ.
     Trả 503 khi pipeline chưa sẵn sàng (chưa có vector store hoặc API key).
     """
     try:

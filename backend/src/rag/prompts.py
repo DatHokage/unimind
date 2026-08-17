@@ -1,16 +1,16 @@
 """
-prompts.py — Buoc 4 roadmap: Prompt template cho RAG chain.
+prompts.py — Prompt he thong cho chatbot quy che.
 
 Nguyen tac thiet ke (muc 8 project.md):
   1. Chi dan LLM CHI tra loi dua tren ngu canh duoc cung cap.
   2. Yeu cau trich dan: Dieu X, Chuong Y, trang Z.
   3. Yeu cau tra loi "Toi khong tim thay thong tin nay trong quy che"
      neu ngu canh khong du -> chong ao giac (hallucination).
-  4. Ho tro multi-turn: bien chat_history trong template.
 
-Bien template: {chat_history}, {question}, {context}
+Bien template: {context} — dien bang src.rag.chain.format_context().
+Lich su hoi-dap khong nam trong template nay: rag_service.py ghep no vao
+noi dung cau hoi truoc khi goi LLM (llm_service chi nhan prompt text).
 """
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 SYSTEM_PROMPT = """\
 Bạn là trợ lý tra cứu Quy chế trường học của Trường Đại học Công nghệ Thông tin \
@@ -32,9 +32,3 @@ kỷ luật, học phí...), ưu tiên thông tin từ đúng quy chế đó tro
 NGỮ CẢNH (mỗi đoạn bắt đầu bằng header dạng "Phần > Chương > Quy chế > Điều"):
 {context}
 """
-
-QA_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", SYSTEM_PROMPT),
-    MessagesPlaceholder("chat_history", optional=True),
-    ("human", "{question}"),
-])
