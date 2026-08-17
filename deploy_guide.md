@@ -119,7 +119,7 @@ Test local nhanh: `uvicorn app.main:app --reload` → mở http://localhost:8000
 
 > Các key này lát nữa dán lại vào **Render dashboard** (Bước 3.6) — bản `.env` trên máy chỉ phục vụ chạy local, **không liên quan** tới server deploy.
 
-> ⚠️ Vector store trong repo nhúng bằng Gemini (cũ) — trước khi dùng chatbot, chạy `python scripts/rebuild_vector_store.py` ở `backend/` (cần `VOYAGE_API_KEY` + file DOCX trong `data/raw/`) rồi commit lại thư mục `vectorstore/`.
+> ✅ Vector store trong repo **đã được nhúng bằng Voyage `voyage-4`** (741 chunks, đã commit) — deploy xong chatbot chạy ngay, không cần rebuild. Chỉ chạy `python scripts/rebuild_vector_store.py` khi cập nhật quy chế mới (DOCX vào `data/raw/`) hoặc đổi `VOYAGE_MODEL`.
 
 📋 **Chuẩn bị sẵn trong notepad 5 giá trị:** connection string, SECRET_KEY, key Voyage, key OpenRouter, key Gemini.
 
