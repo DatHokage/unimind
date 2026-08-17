@@ -14,7 +14,7 @@ Hệ thống quản lý đào tạo cho cơ sở giáo dục, hỗ trợ quản 
 | ORM | SQLAlchemy + Alembic | Model hóa dữ liệu, quản lý migration |
 | Auth | JWT (python-jose) + passlib (bcrypt) | Đăng nhập, phân quyền theo vai trò |
 | AI Engine | LLM online free-tier (Gemini / Openrouter...) | Tư vấn đăng ký, tóm tắt học tập |
-| RAG | **Để trống — tích hợp sau** (đã có pipeline RAG triển khai riêng, sẽ ghép vào sau) | Chatbot hỏi-đáp quy chế đào tạo |
+| RAG | **Voyage AI embedding (API) + ChromaDB** (vector store dựng sẵn, đã commit trong repo) | Chatbot hỏi-đáp quy chế đào tạo |
 
 Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgres), KHÔNG phải microservice. FastAPI là 1 backend duy nhất, gộp cả phần quản lý và phần AI trong cùng codebase Python.
 
@@ -82,8 +82,7 @@ Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgre
 - total_score (tính tự động = (process_score + exam_score) / 2)
 - updated_by, updated_at
 
-**RegulationDoc** (tài liệu quy chế — placeholder cho RAG, để trống chi tiết, tích hợp sau)
-- Để trống — sẽ ghép từ pipeline RAG đã triển khai riêng
+**RAG (quy chế)**: KHÔNG có bảng riêng trong DB nghiệp vụ — tài liệu quy chế được nhúng sẵn vào vector store ChromaDB tại `backend/vectorstore/` (chunk + metadata Phần/Chương/Mục/Điều/trang, xem mục 5.1).
 
 ### 3.2. Quan hệ chính
 - Student (N) — (1) HomeroomClass — (1) Major
@@ -141,34 +140,75 @@ Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgre
 | Method | Endpoint | Mô tả | Quyền |
 |---|---|---|---|
 | POST | `/ai/course-advice` | Input: student_id → AI gợi ý học phần nên đăng ký kỳ tới + giải thích điều kiện tiên quyết | student (chính mình) |
-| POST | `/ai/regulation-chat` | **Để trống — placeholder**, sẽ ghép pipeline RAG đã triển khai riêng vào sau | Đã đăng nhập |
+| POST | `/ai/regulation-chat` | Hỏi-đáp quy chế (RAG): trả lời kèm trích dẫn Điều/Khoản/trang; ngữ cảnh hội thoại theo `session_id`. Kèm `GET /ai/regulation-chat/status` (kiểm tra sẵn sàng) và `GET /ai/regulation-chat/models` (danh sách model cho dropdown). Trả 503 khi pipeline chưa cấu hình, 502 khi LLM lỗi | Đã đăng nhập |
 | POST | `/ai/study-summary` | Input: student_id → AI tóm tắt tiến độ + gợi ý cải thiện | Chính SV, advisor phụ trách |
 
 ---
 
 ## 5. Chi tiết chức năng AI
 
-### 5.1. Chatbot hỏi-đáp quy chế (RAG) — ĐỂ TRỐNG, TÍCH HỢP SAU
-Pipeline RAG đã được triển khai riêng trước đó (chunk → embedding → vector store → retrieval → LLM). Khi ghép vào dự án này, chỉ cần:
-1. Expose endpoint `/ai/regulation-chat` nhận `question: str`, gọi sang module/service RAG hiện có.
-2. Không cần thiết kế lại bảng `RegulationDoc`/`RegulationChunk` trong dự án này — dùng lại vector store đã có sẵn từ pipeline cũ.
-3. Tạm thời để endpoint trả về response mẫu hoặc HTTP 501 "chưa triển khai" trong giai đoạn code CRUD, ghép thật ở giai đoạn cuối.
+### 5.1. Chatbot hỏi-đáp quy chế (RAG) — ĐÃ TÍCH HỢP
+
+Pipeline nằm trong chính codebase này, chia 2 nửa: **offline** (`src/ingestion/` — build index 1 lần) và **online** (`app/services/rag_service.py` + `src/rag/` — trả lời). Hai vai trò độc lập, có thể thay riêng lẻ: **Voyage AI chỉ tạo vector** (không có model chat), **OpenRouter/Gemini chỉ sinh câu trả lời** (không tạo vector).
+
+**Offline — build vector store** (`scripts/rebuild_vector_store.py`, output: `backend/vectorstore/`):
+
+1. **Loader**: đọc Sổ tay sinh viên (DOCX) → tách cấu trúc Phần / Chương / Mục / Điều (kèm số trang).
+2. **Chunker — semantic chunking theo cấu trúc văn bản pháp quy**: mỗi Điều là 1 chunk; điều dài cắt theo khoản/điểm, mục tiêu ~400 token, **overlap ~88 token** (gối đầu để không mất ngữ cảnh ở mép chunk); section nhỏ không có Điều được gộp vào chunk liền trước. Mỗi chunk gắn **header ngữ cảnh** "Phần > Chương > Mục > Điều" và metadata phân cấp (`phan/chuong/muc/dieu/khoan/so_trang`) + **chú thích viết tắt** (VD: "HB KKHT" → "học bổng khuyến khích học tập") để embedding khớp cả câu hỏi dùng tên đầy đủ.
+3. **Embedding**: Voyage AI (mặc định `voyage-4`), `input_type="document"`, batch 10 text/request, retry backoff cho 429/5xx.
+4. **Lưu**: ChromaDB PersistentClient, collection `quy_che`, metadata `embedding_model` ghi lại model đã build — khi truy vấn mà `VOYAGE_MODEL` hiện tại khác model này thì **chặn ngay, yêu cầu rebuild** (mỗi model là một không gian vector riêng, dùng lẫn sẽ ra kết quả sai lệch mà không báo lỗi).
+
+**Online — luồng trả lời 6 bước:**
+
+```
+Câu hỏi
+ ① Voyage embed (input_type="query" — khác "document" lúc build, tối ưu retrieval)
+ ② ChromaDB.query(n_results = RETRIEVER_TOP_K, mặc định 5) — TOP-K similarity search,
+    truyền vector tường minh (KHÔNG để Chroma tự nhúng → tránh tải model local ngốn RAM)
+ ③ 0 chunk khớp → trả "không tìm thấy" NGAY, không gọi LLM (triệt tiêu hallucination)
+ ④ Ghép prompt: SYSTEM_PROMPT + top-k chunk làm ngữ cảnh + lịch sử hội thoại + câu hỏi
+ ⑤ LLM (OpenRouter, lỗi tự fallback Gemini) → clean_answer
+ ⑥ Trả {answer, sources: Điều/Khoản/trang lấy từ metadata chunk, provider, model}
+```
+
+**Multi-turn**: lịch sử giữ server-side theo `(session_id, provider, model)` — sliding window **3 lượt** hỏi-đáp gần nhất, tối đa **200 session**, evict session cũ nhất (LRU). Đổi model lựa chọn = bắt đầu ngữ cảnh mới. Dropdown model trên web chỉ dùng để khóa lịch sử; model trả lời thực tế luôn theo cấu hình `.env` (OpenRouter → fallback Gemini). **Warm-up**: ChromaDB mở sẵn ở thread nền khi server khởi động để câu hỏi đầu không phải chờ.
+
+Vector store dựng sẵn và commit trong repo — deploy không cần chạy lại ingestion (chỉ rebuild khi đổi tài liệu nguồn hoặc đổi `VOYAGE_MODEL`).
 
 ### 5.2. AI tư vấn đăng ký học phần
+
 **Input cần chuẩn bị trước khi gọi AI:**
 - Danh sách học phần sinh viên đã học và điểm đạt (query từ bảng Grade/Enrollment)
 - Danh sách lớp học phần đang mở kỳ tới (query từ CourseClass)
 - Điều kiện tiên quyết của từng học phần (query từ Prerequisite)
 
-**Luồng xử lý:**
-1. Backend tự truy vấn DB lấy 3 nhóm dữ liệu trên (KHÔNG để AI tự "đoán" — AI chỉ suy luận trên dữ liệu thật được cung cấp).
-2. Đưa vào prompt dạng JSON có cấu trúc.
-3. AI trả về gợi ý học phần nên đăng ký kỳ tới + giải thích lý do (đã đủ điều kiện tiên quyết / còn thiếu học phần nào).
-4. **Ràng buộc quan trọng:** AI chỉ gợi ý, KHÔNG tự động đăng ký thay. Sinh viên vẫn phải bấm xác nhận đăng ký qua endpoint `/enrollments` (được server validate lại điều kiện tiên quyết một lần nữa, không tin tưởng hoàn toàn output của AI).
+**Luồng xử lý (hybrid rules + AI):**
+1. Backend tự truy vấn DB lấy 3 nhóm dữ liệu trên (KHÔNG để AI tự "đoán" — AI chỉ suy luận trên dữ liệu thật được cung cấp; payload chỉ chứa dữ liệu của đúng sinh viên được yêu cầu).
+2. **Rule tất định chạy TRƯỚC**: `check_enrollment_eligibility` lọc trùng lịch, tiên quyết chưa đạt, hết chỗ → mỗi lớp mở kèm cờ `eligible` + lý do.
+3. Đưa vào prompt dạng JSON có cấu trúc, ép LLM trả về **JSON theo schema** (`overview`, `recommended[]`, `warnings[]`, `suggestions[]`, `notes`).
+4. **Validate output phía server**: chỉ chấp nhận recommendation có `course_class_id` nằm trong danh sách lớp thực sự đang mở — không tin output AI. LLM lỗi → **fallback**: trả danh sách lớp đủ điều kiện (không có AI), gắn cờ `fallback=true`.
+5. **Ràng buộc quan trọng:** AI chỉ gợi ý, KHÔNG tự động đăng ký thay. Sinh viên vẫn phải bấm xác nhận đăng ký qua endpoint `/enrollments` (được server validate lại điều kiện tiên quyết một lần nữa, không tin tưởng hoàn toàn output của AI).
 
 ### 5.3. AI tóm tắt kết quả học tập
-- Input: toàn bộ điểm (total_score) của sinh viên theo từng kỳ.
+- Input: toàn bộ điểm (total_score) của sinh viên theo từng kỳ + GPA hệ 4 tính theo tín chỉ (chỉ HP `counted_in_gpa`, không lấy trung bình đơn giản).
+- Luồng giống 5.2: dựng payload theo kỳ (điểm trung bình kỳ, HP điểm thấp dưới ngưỡng đạt) → prompt → JSON `{summary, warnings, suggestions}`; LLM lỗi → fallback `summary=null`.
+- Quyền: chính sinh viên xem của mình, hoặc advisor phụ trách lớp hành chính của sinh viên đó.
 - Output: đoạn văn tóm tắt xu hướng học tập (tăng/giảm điểm trung bình theo kỳ), cảnh báo học phần điểm thấp, gợi ý kế hoạch cải thiện chung chung (không thay thế tư vấn chính thức của cố vấn học tập).
+
+### 5.4. Thuật toán & kỹ thuật đã ứng dụng (tóm tắt)
+
+| Nhóm | Kỹ thuật | Áp dụng |
+|---|---|---|
+| RAG | Semantic chunking theo cấu trúc văn bản pháp quy | 1 Điều = 1 chunk, cắt theo khoản khi dài, ~400 token, overlap ~88 token |
+| RAG | Metadata enrichment + header ngữ cảnh | Chunk gắn Phần/Chương/Mục/Điều + trang → làm trích dẫn nguồn; chú thích từ viết tắt |
+| RAG | Embedding vector (Voyage, nhúng bất đối xứng) | `input_type="document"` khi build index, `"query"` khi tìm kiếm |
+| RAG | **Top-k similarity search** (`RETRIEVER_TOP_K=5`) | Lấy 5 chunk gần nhất theo khoảng cách vector trong ChromaDB |
+| RAG | Guardrail chống hallucination | Không chunk nào khớp → từ chối trả lời, không gọi LLM; prompt buộc trả lời theo ngữ cảnh + trích dẫn |
+| LLM | Structured output (JSON) + validate từng trường | 2 endpoint tư vấn; recommendation bị whitelist lại theo DB |
+| LLM | Fallback chain + retry backoff | OpenRouter → Gemini; lỗi 429/5xx retry 2 lần (1s, 2s), lỗi client không retry |
+| Hội thoại | Sliding window (3 lượt) + LRU (200 session) | Lịch sử chatbot theo session |
+| Nghiệp vụ | Hybrid rules + AI | Điều kiện đăng ký tính bằng thuật toán tất định trước, AI chỉ xếp hạng/giải thích trên tập đã lọc |
+| Vận hành | Warm-up + singleton + kiểm tra nhất quán vector space | ChromaDB mở nền lúc khởi động; chặn collection build bằng model khác cấu hình |
 
 ---
 
@@ -398,52 +438,65 @@ def calculate_gpa(db, student_id: int, term: str | None = None) -> float:
 
 ---
 
-## 8. Cấu trúc thư mục đề xuất
+## 8. Cấu trúc thư mục (đã triển khai)
 
 ```
-training-management-system/
+ql_daotao/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                # Khởi tạo FastAPI app, include routers
+│   │   ├── main.py                # Khởi tạo FastAPI app, include routers, warm-up RAG
 │   │   ├── core/
-│   │   │   ├── config.py          # Biến môi trường (SUPABASE_DB_URL, SECRET_KEY, LLM_API_KEY)
+│   │   │   ├── config.py          # Biến môi trường (SUPABASE_DB_URL, SECRET_KEY, LLM/Voyage keys)
 │   │   │   ├── security.py        # Hàm tạo/verify JWT, hash password
-│   │   │   └── database.py        # SQLAlchemy engine, session (kết nối Supabase Postgres)
-│   │   ├── models/                # SQLAlchemy models (User, Student, Lecturer, Course...)
-│   │   ├── schemas/                # Pydantic schemas (request/response)
+│   │   │   └── database.py        # SQLAlchemy engine, session (local SQLite / Supabase Postgres)
+│   │   ├── models/                # SQLAlchemy models (User, Student, Lecturer, Advisor, Course...)
+│   │   ├── schemas/               # Pydantic schemas (request/response)
 │   │   ├── routers/
 │   │   │   ├── auth.py
 │   │   │   ├── students.py
 │   │   │   ├── lecturers.py
 │   │   │   ├── advisors.py        # CRUD cố vấn học tập (bảng advisor riêng)
 │   │   │   ├── homeroom_classes.py
+│   │   │   ├── majors.py
 │   │   │   ├── courses.py
 │   │   │   ├── course_classes.py
 │   │   │   ├── enrollments.py
+│   │   │   ├── schedule.py
 │   │   │   ├── grades.py
 │   │   │   ├── stats.py
-│   │   │   └── ai.py               # course-advice, regulation-chat (placeholder), study-summary
+│   │   │   └── ai.py              # course-advice, study-summary, regulation-chat (+status/models)
 │   │   ├── services/
+│   │   │   ├── user_service.py         # tạo/xóa tài khoản kèm hồ sơ
 │   │   │   ├── enrollment_service.py   # logic kiểm tra điều kiện tiên quyết, trùng lịch
-│   │   │   ├── grade_service.py        # tính total_score
-│   │   │   ├── rag_service.py          # PLACEHOLDER — ghép pipeline RAG có sẵn vào sau
-│   │   │   └── llm_service.py          # gọi LLM API (Gemini/Groq)
+│   │   │   ├── course_service.py       # nghiệp vụ học phần/lớp học phần
+│   │   │   ├── grade_service.py        # tính total_score, GPA, quy đổi điểm chữ/hệ 4
+│   │   │   ├── ai_service.py           # dựng payload tư vấn từ DB + validate output AI
+│   │   │   ├── prompts.py              # template prompt cho course-advice/study-summary
+│   │   │   ├── llm_service.py          # gọi LLM API (OpenRouter → fallback Gemini)
+│   │   │   ├── rag_service.py          # pipeline chatbot quy chế: Voyage → ChromaDB top-k → LLM
+│   │   │   └── embedding_service.py    # Voyage AI API (batch, retry, input_type query/document)
 │   │   └── dependencies/
 │   │       └── auth_dependency.py  # get_current_user, require_role, quyền theo advisor/lecturer
-│   ├── alembic/                    # migration
-│   ├── tests/                      # pytest
+│   ├── src/                       # pipeline RAG (chạy offline, độc lập với app)
+│   │   ├── ingestion/             # loader → chunker → build_index (nạp quy chế vào vectorstore)
+│   │   └── rag/                   # retriever, chain, prompts, models
+│   ├── vectorstore/               # ChromaDB đã nhúng (commit trong repo, deploy không cần rebuild)
+│   ├── scripts/                   # rebuild_vector_store.py, smoke tests
+│   ├── alembic/                   # migration
+│   ├── tests/                     # pytest
 │   ├── requirements.txt
 │   └── .env
 ├── frontend/
 │   ├── src/
-│   │   ├── api/                    # hàm gọi axios/fetch tới backend
-│   │   ├── components/
+│   │   ├── api/                    # axios client gọi tới backend
+│   │   ├── components/             # ui (DataTable, Card...) + domain (GradeTable, CourseClassRow)
 │   │   ├── pages/
-│   │   │   ├── student/            # dashboard, đăng ký, xem điểm, chatbot
-│   │   │   ├── lecturer/           # nhập điểm quá trình, xem lớp dạy
-│   │   │   ├── training-office/    # quản lý toàn bộ, nhập điểm thi
-│   │   │   └── advisor/            # xem các lớp hành chính được phân công
+│   │   │   ├── student/            # dashboard, đăng ký, xem điểm, thời khóa biểu, chatbot quy chế
+│   │   │   ├── lecturer/           # sổ điểm quá trình, xem lớp dạy
+│   │   │   ├── office/             # quản lý toàn bộ (training-office), nhập điểm thi
+│   │   │   └── advisor/            # lớp phụ trách, hồ sơ + nhận xét AI sinh viên
 │   │   ├── context/                # AuthContext (lưu JWT, user info)
+│   │   ├── config/                 # menu/route theo vai trò
 │   │   └── App.jsx
 │   └── package.json
 └── README.md
@@ -583,24 +636,38 @@ def set_exam_score(
     return update_exam_score(db, enrollment_id, score, user["user_id"])
 ```
 
-### 9.5. Placeholder RAG service (`services/rag_service.py`)
-```python
-# PLACEHOLDER — pipeline RAG đã được triển khai riêng ở dự án chatbot quy chế.
-# Khi ghép vào, thay nội dung hàm này bằng cách gọi sang module/service RAG thật
-# (import trực tiếp nếu cùng codebase, hoặc gọi qua HTTP nếu để dạng service riêng).
+### 9.5. RAG service (`services/rag_service.py`) — đã triển khai
 
-async def answer_regulation_question(question: str) -> str:
-    raise NotImplementedError("RAG chưa được tích hợp — sẽ ghép ở giai đoạn sau")
+```python
+# app/services/rag_service.py (rút gọn)
+RETRIEVER_TOP_K = int(os.getenv("RETRIEVER_TOP_K", "5"))
+
+async def answer_regulation_question(question, session_id="default",
+                                     provider="", model="") -> dict:
+    vector = await get_embedding(question, input_type="query")          # Voyage
+    result = await anyio.to_thread.run_sync(lambda:                     # ChromaDB top-k
+        retriever.get_collection().query(
+            query_embeddings=[vector], n_results=RETRIEVER_TOP_K,
+            include=["documents", "metadatas"]))
+    if not result["documents"][0]:                                      # ngoài vùng phủ
+        return {"answer": "Tôi không tìm thấy thông tin này trong quy chế.", ...}
+    system = SYSTEM_PROMPT.format(context=format_context(texts))        # top-k làm ngữ cảnh
+    prompt = f"{lịch_sử_3_lượt}\n\nCâu hỏi: {question}"
+    answer, provider, model = await call_llm_text(prompt, system=system)  # OpenRouter→Gemini
+    return {"answer": clean_answer(answer), "sources": format_sources(...), ...}
 ```
 
 ```python
 # routers/ai.py
 @router.post("/regulation-chat")
-async def regulation_chat(question: str, user=Depends(get_current_user)):
+async def regulation_chat(body: RegulationChatRequest, user=Depends(get_current_user)):
     try:
-        return {"answer": await answer_regulation_question(question)}
-    except NotImplementedError:
-        raise HTTPException(status_code=501, detail="Chức năng đang được tích hợp, chưa khả dụng")
+        return await answer_regulation_question(
+            body.question, body.session_id, provider=body.provider, model=body.model)
+    except RagNotAvailableError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except RagLLMError as e:
+        raise HTTPException(status_code=502, detail=f"Chatbot quy chế gặp lỗi: {e}")
 ```
 
 ---
@@ -618,8 +685,8 @@ async def regulation_chat(question: str, user=Depends(get_current_user)):
 - Code 2 endpoint điểm riêng biệt (process/exam) + `recalculate_total` (mục 9.3, 9.4).
 
 **Giai đoạn 3 — Tích hợp AI, tối ưu prompt, kiểm thử:**
-- Ghép pipeline RAG đã triển khai riêng vào endpoint `/ai/regulation-chat` (thay placeholder ở mục 9.5).
-- Code endpoint `/ai/course-advice`, `/ai/study-summary`.
+- Pipeline RAG đã tích hợp vào `/ai/regulation-chat` (thay placeholder cũ ở mục 9.5) — vector store commit sẵn trong `backend/vectorstore/`.
+- Đã code endpoint `/ai/course-advice`, `/ai/study-summary`.
 - Viết test case: thiếu điều kiện tiên quyết, trùng lịch, lecturer cố nhập điểm thi (kỳ vọng bị chặn 403), training_office cố nhập điểm quá trình (kỳ vọng bị chặn hoặc cho phép tùy chính sách — cần chốt rõ).
 - Tối ưu prompt qua nhiều vòng, so sánh chất lượng câu trả lời trước/sau.
 
@@ -635,7 +702,7 @@ async def regulation_chat(question: str, user=Depends(get_current_user)):
 1. **Không hardcode điều kiện tiên quyết/công thức điểm trong code business logic mà không tách rõ** — điều kiện tiên quyết lưu trong DB (bảng `Prerequisite`), công thức tính điểm giữ cố định `(process + exam) / 2` như mục 6 nhưng đặt thành hàm riêng `recalculate_total()` để dễ sửa nếu sau này đổi trọng số.
 2. **Tuyệt đối không dùng chung 1 endpoint cho process_score và exam_score** — đây là ranh giới phân quyền quan trọng nhất của hệ thống này theo yêu cầu, phải tách endpoint và tách kiểm tra role rõ ràng.
 3. **Luôn validate lại ở server**, kể cả khi gợi ý đến từ AI (mục 5.2) — AI chỉ gợi ý, không được là nguồn duy nhất quyết định ghi vào DB.
-4. **RAG là placeholder** — không cần thiết kế bảng vector/embedding trong migration đầu, chỉ cần chừa endpoint `/ai/regulation-chat` trả 501 cho đến khi ghép pipeline RAG có sẵn vào.
+4. **RAG đã tích hợp** — không cần bảng `RegulationDoc`/`RegulationChunk` trong DB nghiệp vụ: vector store ChromaDB dựng sẵn trong `backend/vectorstore/` (commit trong repo). Chỉ rebuild khi đổi tài liệu nguồn hoặc đổi `VOYAGE_MODEL` (`python scripts/rebuild_vector_store.py`).
 5. **Không để lộ dữ liệu sinh viên khác** qua bất kỳ endpoint hay qua AI response — đặc biệt chú ý quyền `advisor` chỉ giới hạn trong các `HomeroomClass` mình phụ trách, quyền `lecturer` chỉ giới hạn trong các `CourseClass` mình dạy.
 6. **Đặt tên bảng/trường bằng tiếng Anh, ngắn gọn** theo đúng mục 3 (`Student`, `Lecturer`, `Course`, `CourseClass`, `Enrollment`, `Grade`...), tránh đặt tên kiểu tiếng Việt có dấu gạch dưới dài.
 7. Ưu tiên async cho các endpoint gọi LLM (`async def`) vì đây là I/O-bound, tránh block toàn bộ server khi nhiều người dùng dùng tính năng AI cùng lúc.
