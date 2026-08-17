@@ -202,7 +202,7 @@ Hai "Hướng A/B" trong bản kế hoạch cũ (deploy service RAG riêng / g�
 ## 8. Checklist trước khi demo/bảo vệ đồ án
 
 **Hạ tầng**
-- [ ] `git ls-files backend/vectorstore` có `chroma.sqlite3` (nếu không, chatbot chết khi deploy).
+- [x] `git ls-files backend/vectorstore` có `chroma.sqlite3` (nếu không, chatbot chết khi deploy). ✅ Đã kiểm tra 2026-08-17: `chroma.sqlite3` + thư mục segment `caff87ef-...` (741 chunks, `voyage-4`) đều được track; segment cũ `d94e12da` đã xóa khỏi repo.
 - [ ] Build Command trên Render 3 bước: `pip install -r requirements.txt` → `alembic upgrade head` → `python -m app.seed` (KHÔNG có `build_index`; stack RAG không cài trên Render free).
 - [ ] `SUPABASE_DB_URL` trỏ **Session Pooler** (`aws-0-<region>.pooler.supabase.com:5432`, user `postgres.<project-ref>`), KHÔNG phải host direct `db.<ref>.supabase.co` — host direct chỉ có IPv6 ở nhiều region, Render free tier không route được.
 - [ ] **Làm ấm trước giờ demo:** mở `/health` (hoặc `/docs`) trước 5–10 phút — free tier ngủ sau 15 phút không dùng.
