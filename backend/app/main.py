@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.routers import (
+    advisors,
     ai,
     auth,
     course_classes,
@@ -49,6 +50,7 @@ app.include_router(auth.router)
 app.include_router(majors.router)
 app.include_router(students.router)
 app.include_router(lecturers.router)
+app.include_router(advisors.router)
 app.include_router(homeroom_classes.router)
 app.include_router(courses.router)
 app.include_router(course_classes.router)

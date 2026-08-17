@@ -120,6 +120,7 @@ export default function AdvisorStudentsPage({ officeMode = false }) {
             { key: "action", label: "" },
           ]}
           rows={students}
+          sttStart={officeMode ? page * PAGE_SIZE + 1 : 1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <Users size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -131,8 +132,9 @@ export default function AdvisorStudentsPage({ officeMode = false }) {
               </p>
             </div>
           }
-          renderRow={(s) => (
+          renderRow={(s, _i, stt) => (
             <Row key={s.id}>
+              {stt}
               <Cell className="font-medium">{s.code}</Cell>
               <Cell>{s.name}</Cell>
               <Cell className="num">{fmtDate(s.dob)}</Cell>

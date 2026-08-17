@@ -338,8 +338,10 @@ export default function SchedulePage() {
                 { key: "room", label: "Phòng" },
               ]}
               rows={classes}
-              renderRow={(c) => (
+              sttStart={1}
+              renderRow={(c, _i, stt) => (
                 <Row key={c.course_class_id}>
+                  {stt}
                   <Cell className="font-medium">{c.course_code}</Cell>
                   <Cell className="whitespace-normal min-w-40">{c.course_name}</Cell>
                   <NumCell>{c.credits ?? "—"}</NumCell>

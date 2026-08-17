@@ -1,3 +1,4 @@
+from app.schemas.advisor import AdvisorCreate, AdvisorOut, AdvisorPage, AdvisorUpdate
 from app.schemas.ai import (
     CourseAdviceRequest,
     CourseAdviceResponse,

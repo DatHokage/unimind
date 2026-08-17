@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.dependencies.auth_dependency import require_role
+from app.dependencies.auth_dependency import advisor_identity, require_role
 from app.models import Course, CourseClass, Enrollment, Grade, HomeroomClass, Major, Student
 from app.schemas.stats import AcademicResultRow, PopularCourseRow
 
@@ -30,7 +30,7 @@ def academic_results(
         advisor_class_ids = list(
             db.scalars(
                 select(HomeroomClass.id).where(
-                    HomeroomClass.advisor_id == user["lecturer_id"]
+                    HomeroomClass.advisor_id == advisor_identity(user)
                 )
             )
         )

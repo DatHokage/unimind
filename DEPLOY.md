@@ -118,7 +118,7 @@ CORS_ORIGINS=http://localhost:5173,https://unimind.vercel.app
 - Free tier đủ dùng cho quy mô đồ án (500MB storage, đủ cho dữ liệu sinh viên/điểm/học phần).
 - Connection string PostgreSQL chuẩn, dùng thẳng với SQLAlchemy — code đã chạy đúng không cần đổi (`app/core/database.py` đọc `SUPABASE_DB_URL`).
 - Dashboard quản lý dữ liệu trực quan (table editor), tiện khi cần xem/sửa dữ liệu nhanh lúc demo hoặc debug.
-- Migration đầy đủ trong `backend/alembic/versions/` (3 bản: schema gốc, index tên sinh viên, cột chuyển đổi điểm) — chạy `alembic upgrade head` là đủ bảng.
+- Migration đầy đủ trong `backend/alembic/versions/` (5 bản: schema gốc, index tên sinh viên, cột chuyển đổi điểm, index tìm kiếm admin, tách cố vấn khỏi bảng giảng viên) — chạy `alembic upgrade head` là đủ bảng. Bản tách cố vấn tự chuyển dữ liệu `DTCCV*` từ bảng `lecturer` sang bảng `advisor` mới nên DB đã seed vẫn chạy được, không mất dữ liệu.
 
 **Việc cần làm:**
 1. Tạo project trên Supabase → mở **Settings → Database → Connection Pooling**, copy connection string của **Session Pooler** (port **5432**).

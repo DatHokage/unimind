@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Presentation } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { Card, DataTable, Cell, NumCell, Row, Spinner, Alert, Button } from "../../components/ui";
-import { INPUT_CLS, LABEL_CLS } from "../../utils/forms";
+import { INPUT_CLS, LABEL_CLS, SELECT_CLS } from "../../utils/forms";
 import { fmtTerm, fmtScore } from "../../utils/format";
 
 function ExamScoreCell({ enrollmentId, initial, onSaved }) {
@@ -122,7 +122,7 @@ export default function OfficeExamGradesPage() {
         </label>
         <select
           id="class-select"
-          className={`${INPUT_CLS} max-w-md`}
+          className={`${SELECT_CLS} max-w-md`}
           value={selected}
           onChange={(e) => selectClass(e.target.value)}
         >
@@ -146,6 +146,7 @@ export default function OfficeExamGradesPage() {
               { key: "total", label: "Tổng kết", align: "right" },
             ]}
             rows={rows}
+            sttStart={1}
             empty={
               <div className="flex flex-col items-center py-12 text-center">
                 <Presentation size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -155,8 +156,9 @@ export default function OfficeExamGradesPage() {
                 </p>
               </div>
             }
-            renderRow={(r) => (
+            renderRow={(r, _i, stt) => (
               <Row key={r.id}>
+                {stt}
                 <Cell className="font-medium">{r.student_code}</Cell>
                 <Cell>{r.student_name}</Cell>
                 <NumCell>{fmtScore(existing[r.id]?.process)}</NumCell>

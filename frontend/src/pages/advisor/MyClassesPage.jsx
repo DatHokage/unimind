@@ -35,6 +35,7 @@ export default function AdvisorMyClassesPage() {
             { key: "action", label: "" },
           ]}
           rows={classes}
+          sttStart={1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <School size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -44,8 +45,9 @@ export default function AdvisorMyClassesPage() {
               </p>
             </div>
           }
-          renderRow={(c) => (
+          renderRow={(c, _i, stt) => (
             <Row key={c.id}>
+              {stt}
               <Cell className="font-medium">{c.name}</Cell>
               <Cell>{c.major_name ?? "—"}</Cell>
               <Cell>{c.cohort ?? "—"}</Cell>

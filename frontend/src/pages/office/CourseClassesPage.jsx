@@ -4,7 +4,7 @@ import { ListFilter, Presentation, Search } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { Card, DataTable, Cell, Spinner, Alert, Button, Pagination } from "../../components/ui";
 import { CourseClassRow } from "../../components/domain/CourseClassRow";
-import { INPUT_CLS, LABEL_CLS } from "../../utils/forms";
+import { INPUT_CLS, LABEL_CLS, SELECT_CLS } from "../../utils/forms";
 
 const EMPTY = { course_id: "", lecturer_id: "", term: 1, year: 2026, max_size: 40, status: "open", schedule: [] };
 const EMPTY_FILTERS = { year: "", term: "", status: "", course_id: "", lecturer_id: "" };
@@ -327,18 +327,18 @@ export default function OfficeCourseClassesPage() {
         <ListFilter size={15} className="text-secondary ml-2" />
         <input className={`${INPUT_CLS} w-24`} type="number" placeholder="Năm" value={filters.year} onChange={setF("year")} />
         <input className={`${INPUT_CLS} w-24`} type="number" placeholder="Kỳ" value={filters.term} onChange={setF("term")} />
-        <select className={`${INPUT_CLS} w-36`} value={filters.status} onChange={setF("status")}>
+        <select className={`${SELECT_CLS} w-36`} value={filters.status} onChange={setF("status")}>
           <option value="">Mọi trạng thái</option>
           <option value="open">Mở đăng ký</option>
           <option value="closed">Đóng</option>
         </select>
-        <select className={`${INPUT_CLS} w-56`} value={filters.course_id} onChange={setF("course_id")}>
+        <select className={`${SELECT_CLS} w-56`} value={filters.course_id} onChange={setF("course_id")}>
           <option value="">Mọi học phần</option>
           {courses.map((c) => (
             <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
           ))}
         </select>
-        <select className={`${INPUT_CLS} w-56`} value={filters.lecturer_id} onChange={setF("lecturer_id")}>
+        <select className={`${SELECT_CLS} w-56`} value={filters.lecturer_id} onChange={setF("lecturer_id")}>
           <option value="">Mọi giảng viên</option>
           {lecturers.map((l) => (
             <option key={l.id} value={l.id}>{l.code} — {l.name}</option>
@@ -365,7 +365,7 @@ export default function OfficeCourseClassesPage() {
           <form onSubmit={submit} className="grid md:grid-cols-3 gap-3">
             <div>
               <label className={LABEL_CLS}>Học phần</label>
-              <select className={INPUT_CLS} value={form.course_id} onChange={set("course_id")} required disabled={!!editing}>
+              <select className={SELECT_CLS} value={form.course_id} onChange={set("course_id")} required disabled={!!editing}>
                 <option value="">— Chọn học phần —</option>
                 {courses.map((c) => (
                   <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
@@ -374,7 +374,7 @@ export default function OfficeCourseClassesPage() {
             </div>
             <div>
               <label className={LABEL_CLS}>Giảng viên</label>
-              <select className={INPUT_CLS} value={form.lecturer_id} onChange={set("lecturer_id")}>
+              <select className={SELECT_CLS} value={form.lecturer_id} onChange={set("lecturer_id")}>
                 <option value="">— Chọn giảng viên —</option>
                 {lecturers.map((l) => (
                   <option key={l.id} value={l.id}>{l.code} — {l.name}</option>
@@ -383,7 +383,7 @@ export default function OfficeCourseClassesPage() {
             </div>
             <div>
               <label className={LABEL_CLS}>Trạng thái</label>
-              <select className={INPUT_CLS} value={form.status} onChange={set("status")}>
+              <select className={SELECT_CLS} value={form.status} onChange={set("status")}>
                 <option value="open">Mở đăng ký</option>
                 <option value="closed">Đóng</option>
               </select>
@@ -408,7 +408,7 @@ export default function OfficeCourseClassesPage() {
                 {form.schedule.map((s, i) => (
                   <div key={i} className="flex flex-wrap items-center gap-2">
                     <select
-                      className={`${INPUT_CLS} w-32`}
+                      className={`${SELECT_CLS} w-32`}
                       value={s.weekday}
                       onChange={(e) => setSession(i, "weekday", e.target.value)}
                     >
@@ -473,6 +473,7 @@ export default function OfficeCourseClassesPage() {
             { key: "action", label: "" },
           ]}
           rows={classes}
+          sttStart={page * PAGE_SIZE + 1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <Presentation size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -486,8 +487,8 @@ export default function OfficeCourseClassesPage() {
               </p>
             </div>
           }
-          renderRow={(c) => (
-            <CourseClassRow key={c.id} cls={c} showLecturer>
+          renderRow={(c, _i, stt) => (
+            <CourseClassRow key={c.id} cls={c} showLecturer stt={stt}>
               <Cell className="text-right">
                 <span className="inline-flex gap-1">
                   <Button size="sm" variant="secondary" onClick={() => startEdit(c)}>
@@ -545,7 +546,7 @@ export default function OfficeCourseClassesPage() {
                 Tìm
               </Button>
               <select
-                className={`${INPUT_CLS} w-72 max-w-full`}
+                className={`${SELECT_CLS} w-72 max-w-full`}
                 value={pickedStudent}
                 onChange={(e) => setPickedStudent(e.target.value)}
               >
@@ -575,13 +576,15 @@ export default function OfficeCourseClassesPage() {
                 { key: "action", label: "" },
               ]}
               rows={managedRows}
+              sttStart={1}
               empty={
                 <p className="py-8 text-center text-sm text-secondary">
                   Chưa có sinh viên nào đăng ký lớp này.
                 </p>
               }
-              renderRow={(r) => (
+              renderRow={(r, _i, stt) => (
                 <tr key={r.id} className="border-b border-border last:border-0 hover:bg-app/60">
+                  {stt}
                   <td className="px-4 py-3 text-sm font-medium">{r.student_code}</td>
                   <td className="px-4 py-3 text-sm">{r.student_name}</td>
                   <td className="px-4 py-3 text-sm num">

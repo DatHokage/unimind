@@ -1,27 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Search, Users } from "lucide-react";
+import { Search, User } from "lucide-react";
 import api, { errMsg } from "../../api/client";
-import { Card, DataTable, Cell, Row, Badge, Spinner, Alert, Button, Pagination } from "../../components/ui";
-import { INPUT_CLS, LABEL_CLS, SELECT_CLS } from "../../utils/forms";
-import { fmtDate } from "../../utils/format";
+import { Card, DataTable, Cell, Row, Spinner, Alert, Button, Pagination } from "../../components/ui";
+import { INPUT_CLS, LABEL_CLS } from "../../utils/forms";
 
-const EMPTY = { code: "", name: "", dob: "", major_id: "", class_id: "", account: "", password: "" };
+const EMPTY = { code: "", name: "", account: "", password: "" };
 const PAGE_SIZE = 10;
 
-export default function OfficeStudentsPage() {
+/**
+ * Quản lý cố vấn học tập — hồ sơ RIÊNG, không gộp với giảng viên
+ * (cố vấn hỗ trợ sinh viên, không giảng dạy). CRUD qua /advisors.
+ */
+export default function OfficeAdvisorsPage() {
   const location = useLocation();
   const [loading, setLoading] = useState(true);
-  const [students, setStudents] = useState([]);
+  const [advisors, setAdvisors] = useState([]);
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
-  const [majors, setMajors] = useState([]);
-  const [homerooms, setHomerooms] = useState([]);
   const [search, setSearch] = useState(""); // nội dung ô nhập
   const [appliedSearch, setAppliedSearch] = useState(""); // từ khóa đang áp dụng cho danh sách hiện tại
   const [form, setForm] = useState(EMPTY);
-  // Nút "+ Thêm sinh viên" ở header chuyển state { form: 1 } để mở form
   const [showForm, setShowForm] = useState(() => location.state?.form === 1);
   // Dòng đang sửa — null = chế độ thêm mới
   const [editing, setEditing] = useState(null);
@@ -36,11 +36,11 @@ export default function OfficeStudentsPage() {
   // Trả về true nếu response được áp dụng (false = request cũ bị bỏ qua).
   const load = async (pageNum, q = "") => {
     const id = ++reqId.current;
-    const { data } = await api.get("/students", {
+    const { data } = await api.get("/advisors", {
       params: { page: pageNum, size: PAGE_SIZE, ...(q ? { search: q } : {}) },
     });
     if (id !== reqId.current) return false;
-    setStudents(data.data);
+    setAdvisors(data.data);
     setPage(data.page);
     setTotalPages(data.totalPages);
     setTotalElements(data.totalElements);
@@ -48,19 +48,13 @@ export default function OfficeStudentsPage() {
   };
 
   useEffect(() => {
-    Promise.all([api.get("/majors/all"), api.get("/homeroom-classes/all")])
-      .then(([m, h]) => {
-        setMajors(m.data);
-        setHomerooms(h.data);
-      })
-      .catch((e) => setError(errMsg(e)));
     load(0, "")
       .catch((e) => setError(errMsg(e)))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Nút "+ Thêm sinh viên" ở header là Link cùng route với state { form: 1 } —
+  // Nút "+ Thêm cố vấn" ở header là Link cùng route với state { form: 1 } —
   // bấm khi đang ở sẵn trang này không remount component nên phải theo dõi
   // location.key để mở form (location.key đổi mới sau mỗi lần điều hướng).
   useEffect(() => {
@@ -73,7 +67,7 @@ export default function OfficeStudentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
-  // Tìm kiếm: luôn quay về trang đầu với từ khóa mới
+  // Tìm kiếm: luôn quay về trang đầu với điều kiện mới
   const applySearch = () => {
     const q = search;
     load(0, q)
@@ -92,18 +86,10 @@ export default function OfficeStudentsPage() {
   };
 
   // Nạp dữ liệu dòng vào form và mở chế độ sửa
-  const startEdit = (s) => {
+  const startEdit = (a) => {
     setError("");
-    setEditing(s);
-    setForm({
-      code: s.code,
-      name: s.name,
-      dob: s.dob ?? "",
-      major_id: s.major_id ?? "",
-      class_id: s.class_id ?? "",
-      account: "",
-      password: "",
-    });
+    setEditing(a);
+    setForm({ code: a.code, name: a.name, account: "", password: "" });
     setShowForm(true);
     setConfirmId(null);
   };
@@ -112,8 +98,8 @@ export default function OfficeStudentsPage() {
     setError("");
     setSuccess("");
     try {
-      await api.delete(`/students/${id}`);
-      setSuccess("Đã xóa sinh viên");
+      await api.delete(`/advisors/${id}`);
+      setSuccess("Đã xóa cố vấn");
       setConfirmId(null);
       await load(page, appliedSearch);
     } catch (err) {
@@ -126,24 +112,19 @@ export default function OfficeStudentsPage() {
     e.preventDefault();
     setError("");
     setSuccess("");
-    const body = {
-      code: form.code.trim(),
-      name: form.name.trim(),
-      dob: form.dob || null,
-      major_id: form.major_id ? Number(form.major_id) : null,
-      class_id: form.class_id ? Number(form.class_id) : null,
-    };
+    const body = { code: form.code.trim(), name: form.name.trim() };
     try {
       if (editing) {
-        await api.put(`/students/${editing.id}`, body);
-        setSuccess(`Đã cập nhật sinh viên ${body.code}`);
+        await api.put(`/advisors/${editing.id}`, body);
+        setSuccess(`Đã cập nhật cố vấn ${body.code}`);
         closeForm();
       } else {
         if (form.account.trim()) {
-          body.account = { username: form.account.trim(), password: form.password };
+          // Vai trò cố định: cố vấn học tập — không chọn role như trang giảng viên
+          body.account = { username: form.account.trim(), password: form.password, role: "advisor" };
         }
-        await api.post("/students", body);
-        setSuccess(`Đã tạo sinh viên ${body.code}${body.account ? " + tài khoản" : ""}`);
+        await api.post("/advisors", body);
+        setSuccess(`Đã tạo cố vấn ${body.code}${body.account ? " + tài khoản" : ""}`);
         setForm(EMPTY);
         setShowForm(false);
       }
@@ -159,7 +140,7 @@ export default function OfficeStudentsPage() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-secondary num">{totalElements} sinh viên</p>
+      <p className="text-sm text-secondary num">{totalElements} cố vấn học tập</p>
       {error && (
         <Alert kind="error" onClose={() => setError("")}>
           {error}
@@ -171,7 +152,7 @@ export default function OfficeStudentsPage() {
         </Alert>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search
             size={15}
@@ -192,7 +173,7 @@ export default function OfficeStudentsPage() {
 
       {showForm && (
         <Card
-          title={editing ? `Sửa sinh viên ${editing.code}` : "Thêm sinh viên mới"}
+          title={editing ? `Sửa cố vấn ${editing.code}` : "Thêm cố vấn học tập"}
           actions={
             <Button variant="ghost" size="sm" onClick={closeForm}>
               Đóng
@@ -201,34 +182,12 @@ export default function OfficeStudentsPage() {
         >
           <form onSubmit={submit} className="grid md:grid-cols-2 gap-3">
             <div>
-              <label className={LABEL_CLS}>Mã SV</label>
-              <input className={INPUT_CLS} placeholder="VD: SV004" value={form.code} onChange={set("code")} required />
+              <label className={LABEL_CLS}>Mã cố vấn</label>
+              <input className={INPUT_CLS} placeholder="VD: DTCCV005" value={form.code} onChange={set("code")} required />
             </div>
             <div>
               <label className={LABEL_CLS}>Họ tên</label>
               <input className={INPUT_CLS} value={form.name} onChange={set("name")} required />
-            </div>
-            <div>
-              <label className={LABEL_CLS}>Ngày sinh</label>
-              <input className={INPUT_CLS} type="date" value={form.dob} onChange={set("dob")} />
-            </div>
-            <div>
-              <label className={LABEL_CLS}>Ngành</label>
-              <select className={SELECT_CLS} value={form.major_id} onChange={set("major_id")}>
-                <option value="">— Chọn ngành —</option>
-                {majors.map((m) => (
-                  <option key={m.id} value={m.id}>{m.code} — {m.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={LABEL_CLS}>Lớp hành chính</label>
-              <select className={SELECT_CLS} value={form.class_id} onChange={set("class_id")}>
-                <option value="">— Chọn lớp —</option>
-                {homerooms.map((h) => (
-                  <option key={h.id} value={h.id}>{h.name}</option>
-                ))}
-              </select>
             </div>
             {!editing && (
               <>
@@ -243,7 +202,7 @@ export default function OfficeStudentsPage() {
               </>
             )}
             <div className="md:col-span-2">
-              <Button type="submit">{editing ? "Lưu thay đổi" : "Tạo sinh viên"}</Button>
+              <Button type="submit">{editing ? "Lưu thay đổi" : "Tạo cố vấn"}</Button>
             </div>
           </form>
         </Card>
@@ -252,42 +211,34 @@ export default function OfficeStudentsPage() {
       <Card padded={false}>
         <DataTable
           columns={[
-            { key: "code", label: "Mã SV" },
+            { key: "code", label: "Mã CV" },
             { key: "name", label: "Họ tên" },
-            { key: "dob", label: "Ngày sinh" },
-            { key: "major", label: "Ngành" },
-            { key: "class", label: "Lớp" },
             { key: "action", label: "" },
           ]}
-          rows={students}
+          rows={advisors}
           sttStart={page * PAGE_SIZE + 1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
-              <Users size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
+              <User size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
               <p className="text-sm font-medium">
-                {appliedSearch ? `Không tìm thấy sinh viên khớp "${appliedSearch}".` : "Chưa có sinh viên nào."}
+                {appliedSearch ? `Không tìm thấy cố vấn khớp "${appliedSearch}".` : "Chưa có cố vấn nào."}
               </p>
               <p className="text-sm text-secondary mt-1">
                 {appliedSearch
                   ? "Thử từ khóa khác hoặc xóa ô tìm kiếm."
-                  : "Bấm “Thêm sinh viên” ở góc trên bên phải để tạo hồ sơ đầu tiên."}
+                  : "Bấm “Thêm cố vấn” ở góc trên bên phải để tạo hồ sơ đầu tiên."}
               </p>
             </div>
           }
-          renderRow={(s, _i, stt) => (
-            <Row key={s.id}>
+          renderRow={(a, _i, stt) => (
+            <Row key={a.id}>
               {stt}
-              <Cell className="font-medium">{s.code}</Cell>
-              <Cell>{s.name}</Cell>
-              <Cell className="num">{fmtDate(s.dob)}</Cell>
-              <Cell>{s.major_name ?? "—"}</Cell>
-              <Cell>
-                {s.class_name ? <Badge tone="info">{s.class_name}</Badge> : "—"}
-              </Cell>
+              <Cell className="font-medium">{a.code}</Cell>
+              <Cell>{a.name}</Cell>
               <Cell className="text-right">
-                {confirmId === s.id ? (
+                {confirmId === a.id ? (
                   <span className="inline-flex gap-2">
-                    <Button size="sm" variant="danger" onClick={() => doDelete(s.id)}>
+                    <Button size="sm" variant="danger" onClick={() => doDelete(a.id)}>
                       Chắc chắn xóa
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setConfirmId(null)}>
@@ -296,10 +247,10 @@ export default function OfficeStudentsPage() {
                   </span>
                 ) : (
                   <span className="inline-flex gap-1">
-                    <Button size="sm" variant="secondary" onClick={() => startEdit(s)}>
+                    <Button size="sm" variant="secondary" onClick={() => startEdit(a)}>
                       Sửa
                     </Button>
-                    <Button size="sm" variant="danger" onClick={() => setConfirmId(s.id)}>
+                    <Button size="sm" variant="danger" onClick={() => setConfirmId(a.id)}>
                       Xóa
                     </Button>
                   </span>

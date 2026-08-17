@@ -129,13 +129,53 @@ def test_delete_lecturer_blocked_when_teaching(client, db, make_user, make_lectu
     assert resp.status_code == 409
 
 
-def test_delete_lecturer_blocked_when_advising(client, db, make_user, make_lecturer, make_homeroom):
+def test_delete_lecturer_ok_when_not_advising(client, db, make_user, make_lecturer, make_homeroom):
+    """Tách bảng advisor: lecturer không còn dính lớp hành chính → xóa được."""
     l = make_lecturer(db)
-    make_homeroom(db, advisor=l)
+    make_homeroom(db)  # lớp không gán cố vấn
     h = make_user(db, role="training_office")
 
-    resp = client.delete(f"/lecturers/{l.id}", headers=h)
+    assert client.delete(f"/lecturers/{l.id}", headers=h).status_code == 200
+
+
+def test_delete_advisor_blocked_when_advising(client, db, make_user, make_advisor, make_homeroom):
+    """Cố vấn đang phụ trách lớp hành chính thì không được xóa (bảo toàn dữ liệu)."""
+    a = make_advisor(db)
+    make_homeroom(db, advisor=a)
+    h = make_user(db, role="training_office")
+
+    resp = client.delete(f"/advisors/{a.id}", headers=h)
     assert resp.status_code == 409
+
+
+def test_delete_advisor_ok(client, db, make_user, make_advisor):
+    a = make_advisor(db)
+    h = make_user(db, role="training_office")
+
+    assert client.delete(f"/advisors/{a.id}", headers=h).status_code == 200
+    assert all(x["id"] != a.id for x in client.get("/advisors/all", headers=h).json())
+
+
+def test_create_advisor_with_account(client, db, make_user):
+    """Trang admin tạo cố vấn kèm tài khoản đăng nhập role advisor."""
+    h = make_user(db, role="training_office")
+
+    resp = client.post(
+        "/advisors",
+        json={
+            "code": "CV-NEW",
+            "name": "Cố Vấn Mới",
+            "account": {"username": "cvnew", "password": "password123", "role": "advisor"},
+        },
+        headers=h,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["code"] == "CV-NEW"
+
+    # Đăng nhập được với tài khoản mới
+    resp = client.post("/auth/login", data={"username": "cvnew", "password": "password123"})
+    assert resp.status_code == 200
+    assert resp.json()["user"]["role"] == "advisor"
 
 
 # ---------- Major ----------
@@ -182,9 +222,9 @@ def test_delete_major_blocked_when_has_homerooms(client, db, make_user, make_maj
 # ---------- HomeroomClass ----------
 
 
-def test_update_homeroom_ok(client, db, make_user, make_homeroom, make_lecturer, make_major):
+def test_update_homeroom_ok(client, db, make_user, make_homeroom, make_advisor, make_major):
     hc = make_homeroom(db)
-    advisor = make_lecturer(db)
+    advisor = make_advisor(db)
     major = make_major(db)
     h = make_user(db, role="training_office")
 

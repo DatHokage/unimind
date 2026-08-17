@@ -28,6 +28,12 @@ export function AuthProvider({ children }) {
         .get(`/students/${user.student_id}`)
         .then(({ data }) => data?.name && persist({ ...user, name: data.name }))
         .catch(() => {}); // tên chỉ để hiển thị — lỗi thì dùng username
+    } else if (user.advisor_id) {
+      // Cố vấn học tập: backend cho advisor đọc hồ sơ của chính mình
+      api
+        .get(`/advisors/${user.advisor_id}`)
+        .then(({ data }) => data?.name && persist({ ...user, name: data.name }))
+        .catch(() => {});
     } else if (user.lecturer_id) {
       // Backend không có GET /lecturers/{id} → lấy danh sách rồi tìm theo id
       api

@@ -121,6 +121,8 @@ Sau khi seed, mật khẩu chung cho tất cả tài khoản là `password123`. 
 | `DTC004` | Sinh viên Đỗ Thị Tư | lớp CNTT2-K12, dữ liệu đủ 3 học kỳ: môn đạt B/C, môn trượt F, môn đang học, HP không tính GPA (GDTC1) |
 | `DTC005`..`DTC015` | Sinh viên DTC005..DTC015 | dữ liệu phân trang/tìm kiếm danh sách sinh viên |
 
+Cố vấn học tập (`DTCCV*`) là hồ sơ riêng ở bảng `advisor` — không gộp chung với giảng viên; admin quản lý ở menu **"Cố vấn học tập"** riêng.
+
 **Kịch bản demo nhanh**
 
 1. `DTC001` → *Đăng ký học phần*: bấm AI tư vấn → AI gợi ý CTDL/CSDL/GDTC1 kèm lý do; đăng ký CTDL.A thành công.
@@ -184,6 +186,8 @@ Khi đưa lên mạng: **Vercel** (frontend) + **Render** (backend) + **Supabase
 | `ModuleNotFoundError: No module named 'app'` | Đang chạy lệnh ngoài thư mục `backend/`, hoặc chưa activate venv |
 | Dữ liệu demo bị lộn xộn sau khi thử | Xóa `backend/ql_daotao.db` rồi chạy lại `alembic upgrade head` + `python -m app.seed` |
 | Lỗi connect database dù đã dùng SQLite | File `.env` đang trỏ Postgres — đổi `SUPABASE_DB_URL=sqlite:///./ql_daotao.db` |
+| `FATAL: password authentication failed for user "postgres"` khi deploy (Supabase pooler) | User trong `SUPABASE_DB_URL` phải là `postgres.<project-ref>` (kèm mã project), không phải `postgres` trần — xem mục Deploy bước 1 |
+| `Network is unreachable` khi alembic/seed trên Render | `SUPABASE_DB_URL` đang trỏ host direct `db.<ref>.supabase.co` (chỉ IPv6) — đổi sang Session Pooler `aws-0-<region>.pooler.supabase.com:5432` |
 
 ---
 
@@ -195,7 +199,7 @@ backend/
     core/          config, security (JWT + bcrypt), database
     models/        SQLAlchemy 2.x (user, person, academic)
     schemas/       Pydantic v2
-    routers/       auth, majors, students, lecturers, homeroom_classes,
+    routers/       auth, majors, students, lecturers, advisors, homeroom_classes,
                    courses, course_classes, enrollments, schedule, grades,
                    stats, ai
     services/      enrollment, grade, user, course, ai, llm, embedding, prompts, rag_service
@@ -219,9 +223,10 @@ frontend/
 
 ## Ghi chú sai lệch so với đặc tả
 
-1. **Liên kết User ↔ Student/Lecturer**: dùng 2 FK nullable unique trên bảng `users` (`student_id`, `lecturer_id`); kiểm tra sở hữu so sánh giá trị trong JWT.
+1. **Liên kết User ↔ Student/Lecturer/Advisor**: dùng 3 FK nullable unique trên bảng `users` (`student_id`, `lecturer_id`, `advisor_id`); kiểm tra sở hữu so sánh giá trị trong JWT.
 2. **Bảng `users`** thay vì `user` (từ khóa dành riêng của PostgreSQL).
 3. **Grade.updated_by → users.id** (không phải lecturer.id) vì phòng đào tạo cũng ghi điểm.
 4. Lịch học lưu `JSON`: `[{"weekday": 2..8, "start_period", "end_period", "room"}]`; trùng lịch = cùng weekday + giao khoảng tiết, chỉ xét trong cùng (year, term).
-5. Chưa triển khai DELETE sinh viên / lớp / học phần (tránh orphan dữ liệu điểm / đăng ký).
-6. Một số endpoint thêm ngoài đặc tả để đủ UI: `GET /course-classes/{id}/enrollments`, `GET /homeroom-classes/mine`, `PATCH /course-classes/{id}`, `GET /students/{id}`, `GET /schedule/student/{id}?year=&term=`.
+5. DELETE sinh viên / giảng viên / cố vấn / lớp / ngành / học phần: cho phép bởi phòng đào tạo, nhưng **chặn (409)** khi còn dữ liệu tham chiếu (điểm, đăng ký, lớp phụ trách...).
+6. **Cố vấn học tập tách khỏi giảng viên**: bảng `advisor` riêng (chỉ mã + tên), không dùng chung bảng `lecturer`; `homeroom_class.advisor_id` trỏ về `advisor`.
+7. Một số endpoint thêm ngoài đặc tả để đủ UI: `GET /course-classes/{id}/enrollments`, `GET /homeroom-classes/mine`, `PATCH /course-classes/{id}`, `GET /students/{id}`, `GET /schedule/student/{id}?year=&term=`, `GET/POST/PUT/DELETE /advisors`.

@@ -89,6 +89,7 @@ export default function StudentDashboard() {
             { key: "status", label: "Trạng thái" },
           ]}
           rows={enrollments.slice(0, 5)}
+          sttStart={1}
           empty={
             <div className="py-10 text-center text-sm text-secondary">
               Chưa có học phần nào được đăng ký.{" "}
@@ -97,8 +98,9 @@ export default function StudentDashboard() {
               </Link>
             </div>
           }
-          renderRow={(e) => (
+          renderRow={(e, _i, stt) => (
             <Row key={e.id}>
+              {stt}
               <Cell className="font-medium">{e.course_code}</Cell>
               <Cell>{e.course_name}</Cell>
               <Cell>{fmtTerm(e.year, e.term)}</Cell>

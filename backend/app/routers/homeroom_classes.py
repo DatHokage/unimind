@@ -4,11 +4,12 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.dependencies.auth_dependency import (
+    advisor_identity,
     assert_advisor_owns_homeroom,
     get_current_user,
     require_role,
 )
-from app.models import HomeroomClass, Lecturer, Major, Student
+from app.models import Advisor, HomeroomClass, Major, Student
 from app.schemas.homeroom_class import (
     HomeroomClassCreate,
     HomeroomClassOut,
@@ -105,12 +106,12 @@ def list_all_homeroom_classes(
 @router.get("/mine", response_model=list[HomeroomClassOut])
 def my_homeroom_classes(
     db: Session = Depends(get_db),
-    user: dict = Depends(require_role("advisor", "lecturer")),
+    user: dict = Depends(require_role("advisor")),
 ):
     """Cố vấn liệt kê các lớp hành chính mình phụ trách."""
     hcs = db.scalars(
         select(HomeroomClass)
-        .where(HomeroomClass.advisor_id == user["lecturer_id"])
+        .where(HomeroomClass.advisor_id == advisor_identity(user))
         .order_by(HomeroomClass.name)
     ).all()
     return [_homeroom_out(db, hc) for hc in hcs]
@@ -124,8 +125,8 @@ def create_homeroom_class(
 ):
     if db.scalar(select(HomeroomClass).where(HomeroomClass.name == body.name)):
         raise HTTPException(status_code=409, detail="Tên lớp hành chính đã tồn tại")
-    if body.advisor_id is not None and db.get(Lecturer, body.advisor_id) is None:
-        raise HTTPException(status_code=404, detail="Không tìm thấy giảng viên cố vấn")
+    if body.advisor_id is not None and db.get(Advisor, body.advisor_id) is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy cố vấn")
     if body.major_id is not None and db.get(Major, body.major_id) is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy ngành học")
     hc = HomeroomClass(
@@ -155,8 +156,8 @@ def update_homeroom_class(
             )
         ):
             raise HTTPException(status_code=409, detail="Tên lớp hành chính đã tồn tại")
-    if data.get("advisor_id") is not None and db.get(Lecturer, data["advisor_id"]) is None:
-        raise HTTPException(status_code=404, detail="Không tìm thấy giảng viên cố vấn")
+    if data.get("advisor_id") is not None and db.get(Advisor, data["advisor_id"]) is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy cố vấn")
     if data.get("major_id") is not None and db.get(Major, data["major_id"]) is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy ngành học")
     for field, value in data.items():

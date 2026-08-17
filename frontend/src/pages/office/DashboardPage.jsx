@@ -56,8 +56,10 @@ export default function OfficeDashboardPage() {
             { key: "pass", label: "Tỷ lệ đạt", align: "right" },
           ]}
           rows={results}
-          renderRow={(r) => (
+          sttStart={1}
+          renderRow={(r, _i, stt) => (
             <Row key={r.class_id}>
+              {stt}
               <Cell className="font-medium">{r.class_name}</Cell>
               <Cell>{r.cohort ?? "—"}</Cell>
               <NumCell>{r.student_count}</NumCell>
@@ -80,8 +82,10 @@ export default function OfficeDashboardPage() {
             { key: "count", label: "Số đăng ký", align: "right" },
           ]}
           rows={popular}
-          renderRow={(r) => (
+          sttStart={1}
+          renderRow={(r, _i, stt) => (
             <Row key={r.course_code}>
+              {stt}
               <Cell className="font-medium">{r.course_code}</Cell>
               <Cell className="whitespace-normal min-w-36">{r.course_name}</Cell>
               <NumCell>{r.credits}</NumCell>

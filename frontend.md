@@ -124,7 +124,7 @@ src/
 
 ### 5.1. Vùng trên cùng (branding + user)
 - Logo/tên hệ thống (dùng `--color-primary` cho icon/wordmark).
-- Thông tin người dùng đang đăng nhập: avatar, tên, vai trò (badge nhỏ ghi rõ "Sinh viên" / "Giảng viên" / "Phòng đào tạo" / "Cố vấn") — giúp người dùng luôn biết mình đang thao tác với quyền nào, tránh nhầm lẫn (nhất là giảng viên kiêm cố vấn).
+- Thông tin người dùng đang đăng nhập: avatar, tên, vai trò (badge nhỏ ghi rõ "Sinh viên" / "Giảng viên" / "Phòng đào tạo" / "Cố vấn") — giúp người dùng luôn biết mình đang thao tác với quyền nào, tránh nhầm lẫn.
 
 ### 5.2. Vùng menu — chia nhóm theo chức năng, đổi theo role
 
@@ -134,7 +134,7 @@ Menu được định nghĩa tập trung tại `config/menuConfig.js`, mỗi rol
 |---|---|
 | `student` | Học tập (Thời khóa biểu, Đăng ký học phần, Bảng điểm) · Trợ lý AI (Tư vấn đăng ký, Hỏi đáp quy chế) |
 | `lecturer` | Giảng dạy (Lớp học phần của tôi, Nhập điểm quá trình) |
-| `training_office` | Quản lý (Sinh viên, Giảng viên, Học phần, Lớp học phần, Nhập điểm thi) · Thống kê (Kết quả học tập) |
+| `training_office` | Quản lý (Sinh viên, Giảng viên, Cố vấn học tập, Học phần, Lớp học phần, Nhập điểm thi) · Thống kê (Kết quả học tập) |
 | `advisor` | Cố vấn (Lớp phụ trách, Kết quả sinh viên) |
 
 - Mỗi nhóm có tiêu đề nhỏ (uppercase, `text-xs`, màu `--color-text-secondary`) phân cách các mục — giống cách LMS chia "HỌC TẬP" thành 1 nhóm riêng.

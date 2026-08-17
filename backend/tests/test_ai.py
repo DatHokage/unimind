@@ -97,7 +97,7 @@ def test_course_advice_forbidden_for_non_student(client, db, make_user, make_stu
     assert resp.status_code == 403
 
 
-def test_study_summary_advisor_permission(client, db, make_user, make_lecturer, make_homeroom, make_student, monkeypatch):
+def test_study_summary_advisor_permission(client, db, make_user, make_advisor, make_homeroom, make_student, monkeypatch):
     from app.services import ai_service
 
     async def fake_run(db_, student_id):
@@ -105,12 +105,12 @@ def test_study_summary_advisor_permission(client, db, make_user, make_lecturer, 
 
     monkeypatch.setattr(ai_service, "run_study_summary", fake_run)
 
-    advisor = make_lecturer(db)
+    advisor = make_advisor(db)
     my_class = make_homeroom(db, advisor=advisor)
     foreign_class = make_homeroom(db)
     my_student = make_student(db, homeroom=my_class)
     foreign_student = make_student(db, homeroom=foreign_class)
-    h = make_user(db, role="advisor", lecturer=advisor)
+    h = make_user(db, role="advisor", advisor=advisor)
 
     resp = client.post("/ai/study-summary", json={"student_id": my_student.id}, headers=h)
     assert resp.status_code == 200

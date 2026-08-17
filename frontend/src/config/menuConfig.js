@@ -16,6 +16,7 @@ import {
   PenLine,
   BarChart,
   School,
+  HeartHandshake,
 } from "lucide-react";
 
 /**
@@ -58,6 +59,7 @@ export const MENU = {
       items: [
         { to: "/office/students", icon: Users, label: "Sinh viên" },
         { to: "/office/lecturers", icon: User, label: "Giảng viên" },
+        { to: "/office/advisors", icon: HeartHandshake, label: "Cố vấn học tập" },
         { to: "/office/majors", icon: BookMarked, label: "Ngành học" },
         { to: "/office/homerooms", icon: School, label: "Lớp hành chính" },
         { to: "/office/courses", icon: Library, label: "Học phần" },

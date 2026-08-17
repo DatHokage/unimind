@@ -11,6 +11,15 @@ from app.models import Enrollment, HomeroomClass, Student, User
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 
+def advisor_identity(user: dict) -> int | None:
+    """ID bảng advisor của tài khoản hiện tại.
+
+    Fallback về lecturer_id để token cấp trước migration tách advisor
+    (cố vấn từng lưu trong bảng lecturer) vẫn hoạt động đến hết hạn.
+    """
+    return user.get("advisor_id") or user.get("lecturer_id")
+
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> dict:
     """Giải mã JWT và trả về claims dict; kèm kiểm tra user vẫn tồn tại trong DB."""
     credentials_error = HTTPException(
@@ -66,7 +75,7 @@ def get_target_student(
         if student.class_id is None:
             raise HTTPException(status_code=403, detail="Không đủ quyền truy cập")
         homeroom = db.get(HomeroomClass, student.class_id)
-        if homeroom is None or homeroom.advisor_id != user["lecturer_id"]:
+        if homeroom is None or homeroom.advisor_id != advisor_identity(user):
             raise HTTPException(status_code=403, detail="Không phải sinh viên bạn phụ trách")
         return student
 
@@ -93,6 +102,6 @@ def assert_advisor_owns_homeroom(db: Session, user: dict, homeroom_id: int) -> H
     homeroom = db.get(HomeroomClass, homeroom_id)
     if homeroom is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy lớp hành chính")
-    if user["role"] != "training_office" and homeroom.advisor_id != user["lecturer_id"]:
+    if user["role"] != "training_office" and homeroom.advisor_id != advisor_identity(user):
         raise HTTPException(status_code=403, detail="Không phải lớp bạn phụ trách")
     return homeroom

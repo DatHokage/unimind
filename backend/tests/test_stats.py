@@ -1,6 +1,6 @@
-def _scenario(db, make_lecturer, make_homeroom, make_student, make_course, make_course_class, make_enrollment):
+def _scenario(db, make_advisor, make_homeroom, make_student, make_course, make_course_class, make_enrollment):
     """2 SV cùng lớp, đã có điểm: 1 đạt (7.5), 1 trượt (4.0)."""
-    advisor = make_lecturer(db)
+    advisor = make_advisor(db)
     hc = make_homeroom(db, advisor=advisor)
     s1 = make_student(db, homeroom=hc)
     s2 = make_student(db, homeroom=hc)
@@ -10,8 +10,8 @@ def _scenario(db, make_lecturer, make_homeroom, make_student, make_course, make_
     return advisor, hc
 
 
-def test_academic_results(client, db, make_user, make_lecturer, make_homeroom, make_student, make_course, make_course_class, make_enrollment):
-    advisor, hc = _scenario(db, make_lecturer, make_homeroom, make_student, make_course, make_course_class, make_enrollment)
+def test_academic_results(client, db, make_user, make_advisor, make_homeroom, make_student, make_course, make_course_class, make_enrollment):
+    advisor, hc = _scenario(db, make_advisor, make_homeroom, make_student, make_course, make_course_class, make_enrollment)
     h = make_user(db, role="training_office")
     resp = client.get("/stats/academic-results", headers=h)
     assert resp.status_code == 200
@@ -25,10 +25,10 @@ def test_academic_results(client, db, make_user, make_lecturer, make_homeroom, m
     assert row["pass_rate"] == 0.5   # 1/2 đạt
 
 
-def test_advisor_stats_restricted(client, db, make_user, make_lecturer, make_homeroom, make_student, make_course, make_course_class, make_enrollment):
-    advisor, hc = _scenario(db, make_lecturer, make_homeroom, make_student, make_course, make_course_class, make_enrollment)
+def test_advisor_stats_restricted(client, db, make_user, make_advisor, make_homeroom, make_student, make_course, make_course_class, make_enrollment):
+    advisor, hc = _scenario(db, make_advisor, make_homeroom, make_student, make_course, make_course_class, make_enrollment)
     foreign_class = make_homeroom(db)
-    h = make_user(db, role="advisor", lecturer=advisor)
+    h = make_user(db, role="advisor", advisor=advisor)
 
     # Mặc định chỉ trả về lớp của mình
     resp = client.get("/stats/academic-results", headers=h)

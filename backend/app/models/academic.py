@@ -7,7 +7,7 @@ from app.models.base import Base
 
 
 class HomeroomClass(Base):
-    """Lớp hành chính — gắn 1 cố vấn (giảng viên) phụ trách."""
+    """Lớp hành chính — gắn 1 cố vấn học tập phụ trách."""
 
     __tablename__ = "homeroom_class"
 
@@ -15,10 +15,10 @@ class HomeroomClass(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     major_id: Mapped[int | None] = mapped_column(ForeignKey("major.id"), nullable=True)
     cohort: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    advisor_id: Mapped[int | None] = mapped_column(ForeignKey("lecturer.id"), nullable=True)
+    advisor_id: Mapped[int | None] = mapped_column(ForeignKey("advisor.id"), nullable=True)
 
     major: Mapped["Major | None"] = relationship()
-    advisor: Mapped["Lecturer | None"] = relationship(back_populates="advised_classes")
+    advisor: Mapped["Advisor | None"] = relationship(back_populates="advised_classes")
     students: Mapped[list["Student"]] = relationship(back_populates="homeroom_class")
 
     # Index hỗ trợ filter theo ngành/khóa trong danh sách lớp hành chính phân trang

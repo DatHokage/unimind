@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { ListFilter, School, Search } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { Card, DataTable, Cell, NumCell, Row, Spinner, Alert, Button, Pagination } from "../../components/ui";
-import { INPUT_CLS, LABEL_CLS } from "../../utils/forms";
+import { INPUT_CLS, LABEL_CLS, SELECT_CLS } from "../../utils/forms";
 
 const EMPTY = { name: "", major_id: "", cohort: "", advisor_id: "" };
 const PAGE_SIZE = 10;
@@ -16,7 +16,7 @@ export default function OfficeHomeroomsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   const [majors, setMajors] = useState([]);
-  const [lecturers, setLecturers] = useState([]);
+  const [advisors, setAdvisors] = useState([]);
   const [search, setSearch] = useState(""); // nội dung ô nhập
   const [appliedSearch, setAppliedSearch] = useState(""); // từ khóa đang áp dụng cho danh sách hiện tại
   const [appliedMajor, setAppliedMajor] = useState(""); // ngành đang áp dụng
@@ -54,11 +54,11 @@ export default function OfficeHomeroomsPage() {
   };
 
   useEffect(() => {
-    // Danh mục cho form: toàn bộ ngành + giảng viên (không phân trang)
-    Promise.all([api.get("/majors/all"), api.get("/lecturers/all")])
-      .then(([m, l]) => {
+    // Danh mục cho form: toàn bộ ngành + cố vấn học tập (không phân trang)
+    Promise.all([api.get("/majors/all"), api.get("/advisors/all")])
+      .then(([m, a]) => {
         setMajors(m.data);
-        setLecturers(l.data);
+        setAdvisors(a.data);
       })
       .catch((e) => setError(errMsg(e)));
     load(0, "", "", "")
@@ -207,13 +207,13 @@ export default function OfficeHomeroomsPage() {
           Tìm
         </Button>
         <ListFilter size={15} className="text-secondary ml-2" />
-        <select className={`${INPUT_CLS} w-56`} value={appliedMajor} onChange={applyMajor}>
+        <select className={`${SELECT_CLS} w-56`} value={appliedMajor} onChange={applyMajor}>
           <option value="">Mọi ngành</option>
           {majors.map((m) => (
             <option key={m.id} value={m.id}>{m.code} — {m.name}</option>
           ))}
         </select>
-        <select className={`${INPUT_CLS} w-36`} value={appliedCohort} onChange={applyCohort}>
+        <select className={`${SELECT_CLS} w-36`} value={appliedCohort} onChange={applyCohort}>
           <option value="">Mọi khóa</option>
           {cohorts.map((c) => (
             <option key={c} value={c}>Khóa {c}</option>
@@ -241,7 +241,7 @@ export default function OfficeHomeroomsPage() {
             </div>
             <div>
               <label className={LABEL_CLS}>Ngành</label>
-              <select className={INPUT_CLS} value={form.major_id} onChange={set("major_id")}>
+              <select className={SELECT_CLS} value={form.major_id} onChange={set("major_id")}>
                 <option value="">— Chọn ngành —</option>
                 {majors.map((m) => (
                   <option key={m.id} value={m.id}>{m.code} — {m.name}</option>
@@ -249,11 +249,11 @@ export default function OfficeHomeroomsPage() {
               </select>
             </div>
             <div>
-              <label className={LABEL_CLS}>Cố vấn (giảng viên)</label>
-              <select className={INPUT_CLS} value={form.advisor_id} onChange={set("advisor_id")}>
-                <option value="">— Chọn giảng viên —</option>
-                {lecturers.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} — {l.name}</option>
+              <label className={LABEL_CLS}>Cố vấn học tập</label>
+              <select className={SELECT_CLS} value={form.advisor_id} onChange={set("advisor_id")}>
+                <option value="">— Chọn cố vấn —</option>
+                {advisors.map((a) => (
+                  <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
                 ))}
               </select>
             </div>
@@ -275,6 +275,7 @@ export default function OfficeHomeroomsPage() {
             { key: "action", label: "" },
           ]}
           rows={homerooms}
+          sttStart={page * PAGE_SIZE + 1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <School size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -288,8 +289,9 @@ export default function OfficeHomeroomsPage() {
               </p>
             </div>
           }
-          renderRow={(h) => (
+          renderRow={(h, _i, stt) => (
             <Row key={h.id}>
+              {stt}
               <Cell className="font-medium">{h.name}</Cell>
               <Cell>{h.major_name ?? "—"}</Cell>
               <Cell>{h.cohort ?? "—"}</Cell>

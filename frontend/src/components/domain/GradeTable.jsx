@@ -28,9 +28,11 @@ export function GradeTable({ grades, empty }) {
         { key: "result", label: "Kết quả" },
       ]}
       rows={grades}
+      sttStart={1}
       empty={empty}
-      renderRow={(g) => (
+      renderRow={(g, _i, stt) => (
         <Row key={g.enrollment_id}>
+          {stt}
           <Cell className="font-medium">{g.course_code}</Cell>
           <Cell className="whitespace-normal min-w-40">{g.course_name}</Cell>
           <NumCell>{g.credits}</NumCell>

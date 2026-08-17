@@ -215,6 +215,7 @@ export default function RegistrationPage() {
             { key: "action", label: "" },
           ]}
           rows={classes}
+          sttStart={1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <CalendarX size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -224,11 +225,12 @@ export default function RegistrationPage() {
               </p>
             </div>
           }
-          renderRow={(c) => {
+          renderRow={(c, _i, stt) => {
             const enrolled = myEnrollmentIds.has(c.id);
             const full = c.enrolled_count >= c.max_size;
             return (
               <Row key={c.id}>
+                {stt}
                 <Cell className="font-medium">
                   {c.course_code}
                   <span className="text-secondary text-xs"> · {fmtTerm(c.year, c.term)}</span>

@@ -33,6 +33,7 @@ from app.core.database import SessionLocal, engine
 from app.core.security import hash_password
 from app.models import Base
 from app.models import (
+    Advisor,
     Course,
     CourseClass,
     Enrollment,
@@ -67,7 +68,8 @@ LECTURERS = [
 ]
 
 ADVISORS = [
-    # (mã, tên, tài khoản) — cố vấn là giảng viên có tài khoản role "advisor"; tài khoản = mã
+    # (mã, tên, tài khoản) — cố vấn học tập là hồ sơ RIÊNG (bảng advisor),
+    # không phải giảng viên; tài khoản = mã, role "advisor"
     ("DTCCV001", "Ngô Thị Lan", "DTCCV001"),
     ("DTCCV002", "Đinh Công Sơn", "DTCCV002"),
     ("DTCCV003", "Bùi Thị Huế", "DTCCV003"),
@@ -244,18 +246,28 @@ def seed(db: Session) -> None:
         if username:
             _get_or_create_user(db, username, "lecturer", lecturer_id=gv.id)
 
-    # --- Cố vấn (giảng viên có tài khoản role advisor) ---
+    # --- Cố vấn học tập (bảng advisor riêng, KHÔNG phải giảng viên) ---
+    # Dọn vết tích cũ: DB seed trước bản tách advisor còn lưu cố vấn trong bảng
+    # lecturer (mã DTCCV*) và trỏ users.lecturer_id — xóa hàng lecturer cũ trước
+    # (đã được migration chuyển sang advisor; seed chưa bao giờ gán lớp học phần
+    # cho cố vấn nên không ảnh hưởng dữ liệu dạy/học).
+    for gv in db.scalars(select(Lecturer).where(Lecturer.code.like("DTCCV%"))).all():
+        for u in db.scalars(select(User).where(User.lecturer_id == gv.id)).all():
+            u.lecturer_id = None
+        db.delete(gv)
+    db.flush()
+
     advisors = {}
     for code, name, username in ADVISORS:
-        gv, _ = _get_or_create(db, Lecturer, {"code": code}, name=name, department="CNTT")
-        advisors[code] = gv
+        cv, _ = _get_or_create(db, Advisor, {"code": code}, name=name)
+        advisors[code] = cv
         # Đổi tài khoản cũ (advisor1…) sang mã — cùng logic với giảng viên
-        old = db.scalar(select(User).where(User.lecturer_id == gv.id, User.username != username))
+        old = db.scalar(select(User).where(User.advisor_id == cv.id, User.username != username))
         if old:
             print(f"  ~ đổi tên tài khoản {old.username} → {username}")
             old.username = username
             db.flush()
-        _get_or_create_user(db, username, "advisor", lecturer_id=gv.id)
+        _get_or_create_user(db, username, "advisor", advisor_id=cv.id)
 
     # --- Phòng đào tạo + admin (admin = quản trị hệ thống, dùng role training_office) ---
     _get_or_create_user(db, "ptdt", "training_office")

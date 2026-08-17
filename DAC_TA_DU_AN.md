@@ -44,7 +44,7 @@ Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgre
 ### 3.1. Các bảng chính
 
 **User** (tài khoản đăng nhập)
-- id, username, password_hash, role, created_at
+- id, username, password_hash, role, student_id (FK → Student, nullable), lecturer_id (FK → Lecturer, nullable), advisor_id (FK → Advisor, nullable), created_at
 
 **Student**
 - id, code (mã SV, unique), name, dob, major_id (FK → Major), class_id (FK → HomeroomClass)
@@ -52,13 +52,17 @@ Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgre
 **Lecturer**
 - id, code (unique), name, department
 
+**Advisor** (cố vấn học tập)
+- id, code (unique), name
+- Hỗ trợ sinh viên, KHÔNG giảng dạy — bảng riêng, không gộp chung với `Lecturer`
+
 **Major** (ngành học)
 - id, name, code
 
 **HomeroomClass** (lớp hành chính)
-- id, name, major_id (FK), cohort (khóa/năm nhập học), advisor_id (FK → Lecturer, cố vấn phụ trách lớp này)
+- id, name, major_id (FK), cohort (khóa/năm nhập học), advisor_id (FK → Advisor, cố vấn phụ trách lớp này)
 
-> Một `Lecturer` có thể vừa dạy `CourseClass` vừa là `advisor` của một hoặc nhiều `HomeroomClass` — không tách bảng riêng, dùng chung bảng `Lecturer`, phân biệt qua vai trò sử dụng (role `lecturer` để dạy, hoặc được gán làm `advisor_id` ở `HomeroomClass`).
+> Cố vấn học tập là hồ sơ **riêng biệt** (bảng `Advisor`): làm bên hỗ trợ sinh viên, không đứng lớp học phần nên không gộp với giảng viên. Một `Advisor` có thể phụ trách nhiều `HomeroomClass` (qua `homeroom_class.advisor_id`); một `Lecturer` chỉ dạy `CourseClass`. Admin (phòng đào tạo) quản lý hai danh mục riêng: `/lecturers` và `/advisors`.
 
 **Course** (học phần)
 - id, code (unique), name, credits
@@ -83,7 +87,7 @@ Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgre
 
 ### 3.2. Quan hệ chính
 - Student (N) — (1) HomeroomClass — (1) Major
-- HomeroomClass (N) — (1) Lecturer [qua advisor_id — 1 giảng viên có thể là cố vấn nhiều lớp]
+- HomeroomClass (N) — (1) Advisor [qua advisor_id — 1 cố vấn có thể phụ trách nhiều lớp]
 - Course (N) — (N) Course [qua Prerequisite — tự tham chiếu]
 - CourseClass (N) — (1) Course
 - CourseClass (N) — (1) Lecturer [1 giảng viên dạy nhiều lớp học phần]
@@ -106,6 +110,8 @@ Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgre
 | GET/POST | `/students` | Danh sách / tạo sinh viên | training_office |
 | GET/PUT | `/students/{id}` | Xem / sửa 1 sinh viên | training_office, chính SV đó (chỉ xem) |
 | GET/POST | `/lecturers` | Danh sách / tạo giảng viên | training_office |
+| GET/POST | `/advisors` | Danh sách / tạo cố vấn học tập (kèm tài khoản role `advisor` tùy chọn) | training_office |
+| GET/PUT/DELETE | `/advisors/{id}` | Xem / sửa / xóa 1 cố vấn (chặn xóa nếu đang phụ trách lớp) | training_office; advisor xem chính mình |
 | GET/POST | `/homeroom-classes` | Danh sách / tạo lớp hành chính, gán advisor | training_office |
 | GET | `/homeroom-classes/{id}/students` | Danh sách SV trong lớp hành chính | advisor phụ trách lớp đó, training_office |
 | GET/POST | `/courses` | Danh sách / tạo học phần (kèm điều kiện tiên quyết) | training_office |
@@ -409,6 +415,7 @@ training-management-system/
 │   │   │   ├── auth.py
 │   │   │   ├── students.py
 │   │   │   ├── lecturers.py
+│   │   │   ├── advisors.py        # CRUD cố vấn học tập (bảng advisor riêng)
 │   │   │   ├── homeroom_classes.py
 │   │   │   ├── courses.py
 │   │   │   ├── course_classes.py
@@ -483,7 +490,8 @@ def require_advisor_owns_student(student_id: int):
     def checker(db=Depends(get_db), user: dict = Depends(require_role("advisor"))):
         student = get_student(db, student_id)
         homeroom = get_homeroom_class(db, student.class_id)
-        if homeroom.advisor_id != user["user_id"]:
+        # Danh tính advisor lưu trong JWT (advisor_id, fallback lecturer_id cho token cũ)
+        if homeroom.advisor_id != user.get("advisor_id"):
             raise HTTPException(status_code=403, detail="Không phải sinh viên bạn phụ trách")
         return user
     return checker
@@ -605,7 +613,7 @@ async def regulation_chat(question: str, user=Depends(get_current_user)):
 
 **Giai đoạn 2 — Xây dựng chức năng quản lý:**
 - Setup FastAPI project theo cấu trúc mục 8, models + Alembic migration, kết nối Supabase Postgres.
-- Code CRUD cho: Student, Lecturer, HomeroomClass (kèm advisor_id), Course, CourseClass.
+- Code CRUD cho: Student, Lecturer, Advisor, HomeroomClass (kèm advisor_id), Course, CourseClass.
 - Code logic `check_enrollment_eligibility` (mục 9.2) — đây là phần nghiệp vụ khó nhất, cần test kỹ.
 - Code 2 endpoint điểm riêng biệt (process/exam) + `recalculate_total` (mục 9.3, 9.4).
 

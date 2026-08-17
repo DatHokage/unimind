@@ -275,6 +275,7 @@ export default function OfficeCoursesPage() {
             { key: "action", label: "" },
           ]}
           rows={courses}
+          sttStart={page * PAGE_SIZE + 1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <Library size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -288,8 +289,9 @@ export default function OfficeCoursesPage() {
               </p>
             </div>
           }
-          renderRow={(c) => (
+          renderRow={(c, _i, stt) => (
             <Row key={c.id}>
+              {stt}
               <Cell className="font-medium">{c.code}</Cell>
               <Cell className="whitespace-normal min-w-40">{c.name}</Cell>
               <NumCell>{c.credits}</NumCell>

@@ -42,7 +42,7 @@ class Student(Base):
 
 
 class Lecturer(Base):
-    """Giảng viên — có thể vừa dạy lớp học phần, vừa làm cố vấn lớp hành chính."""
+    """Giảng viên — dạy lớp học phần."""
 
     __tablename__ = "lecturer"
 
@@ -52,7 +52,25 @@ class Lecturer(Base):
     department: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     course_classes: Mapped[list["CourseClass"]] = relationship(back_populates="lecturer")
-    advised_classes: Mapped[list["HomeroomClass"]] = relationship(back_populates="advisor")
 
     # Index hỗ trợ tìm kiếm trong danh sách giảng viên (theo code có unique index sẵn)
     __table_args__ = (Index("ix_lecturer_name", "name"),)
+
+
+class Advisor(Base):
+    """Cố vấn học tập — hỗ trợ sinh viên, KHÔNG giảng dạy.
+
+    Tách riêng khỏi Lecturer: cố vấn phụ trách lớp hành chính
+    (homeroom_class.advisor_id → advisor.id), không đứng lớp học phần.
+    """
+
+    __tablename__ = "advisor"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    advised_classes: Mapped[list["HomeroomClass"]] = relationship(back_populates="advisor")
+
+    # Index hỗ trợ tìm kiếm trong danh sách cố vấn (theo code có unique index sẵn)
+    __table_args__ = (Index("ix_advisor_name", "name"),)

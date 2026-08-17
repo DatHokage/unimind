@@ -264,7 +264,8 @@ set SMOKE_BASE=https://<name>.onrender.com
 | Chat quy chế trả lỗi **503** | Chưa điền `VOYAGE_API_KEY` (bắt buộc cho embedding) trên Render, hoặc vector store chưa rebuild bằng Voyage | Dán key Voyage vào tab Environment; nếu index lệch model thì rebuild + commit lại `backend/vectorstore/` |
 | Chat quy chế trả lỗi **502** | Cả OpenRouter lẫn Gemini đều lỗi/hết quota | Code tự fallback OpenRouter → Gemini; nếu vẫn lỗi kiểm tra quota cả 2 tài khoản |
 | AI tư vấn trả lời dạng "fallback" (không thông minh) | Gemini hết quota/bị lọc an toàn và OpenRouter cũng lỗi | Vẫn chạy được (fallback server-side); kiểm tra quota 2 tài khoản |
-| Log build báo lỗi `alembic` / `Network is unreachable` | `SUPABASE_DB_URL` đang trỏ host direct `db.<ref>.supabase.co` (chỉ IPv6) hoặc sai pooler/mật khẩu | Dán lại connection string **Session Pooler** dạng Bước 1.3 |
+| Log build báo lỗi `alembic` / `Network is unreachable` | `SUPABASE_DB_URL` đang trỏ host direct `db.<ref>.supabase.co` (chỉ IPv6) hoặc sai pooler | Dán lại connection string **Session Pooler** dạng Bước 1.3 |
+| `FATAL: password authentication failed for user "postgres"` | User trong chuỗi pooler đang là `postgres` trần — Supabase pooler bắt buộc `postgres.<project-ref>` để định tuyến đúng project, dù password đúng vẫn báo sai | Sửa `SUPABASE_DB_URL` trên Render: user phải là `postgres.<project-ref>` (xem Bước 1.3) |
 | Render báo service bị **killed** (OOM) | Rất khó xảy ra — pipeline RAG đã đo chỉ tốn ~126MB RSS (embedding gọi API, không tải model local); nếu gặp thì kiểm tra có ai thêm dependency nặng (torch...) vào `requirements.txt` không | Giữ requirements đúng như trong repo |
 | Vercel trắng trang khi reload ở route con | Thiếu `vercel.json` | File đã có trong repo — kiểm tra push đủ chưa |
 | Đổi `VITE_API_BASE_URL` trên Vercel mà không thấy tác dụng | Biến Vite ăn lúc **build** | Sau khi đổi biến phải **Redeploy** trên Vercel |

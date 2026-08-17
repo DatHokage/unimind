@@ -81,9 +81,9 @@ def test_schedule_other_student_forbidden(client, db, make_user, make_student, m
     assert resp.status_code == 403
 
 
-def test_schedule_advisor_scope(client, db, make_user, make_lecturer, make_homeroom, make_student, make_course, make_course_class, make_enrollment):
-    advisor = make_lecturer(db)
-    other_advisor = make_lecturer(db)
+def test_schedule_advisor_scope(client, db, make_user, make_advisor, make_homeroom, make_student, make_course, make_course_class, make_enrollment):
+    advisor = make_advisor(db)
+    other_advisor = make_advisor(db)
     my_class = make_homeroom(db, advisor=advisor)
     foreign_class = make_homeroom(db, advisor=other_advisor)
     my_student = make_student(db, homeroom=my_class)
@@ -91,7 +91,7 @@ def test_schedule_advisor_scope(client, db, make_user, make_lecturer, make_homer
     cc = make_course_class(db, make_course(db))
     make_enrollment(db, my_student, cc)
     make_enrollment(db, foreign_student, cc)
-    h = make_user(db, role="advisor", lecturer=advisor)
+    h = make_user(db, role="advisor", advisor=advisor)
 
     resp = client.get(f"/schedule/student/{my_student.id}", headers=h)
     assert resp.status_code == 200

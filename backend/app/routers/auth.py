@@ -28,6 +28,7 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
             role=user.role,
             student_id=user.student_id,
             lecturer_id=user.lecturer_id,
+            advisor_id=user.advisor_id,
         ),
     )
 
@@ -40,4 +41,5 @@ def me(user: dict = Depends(get_current_user)):
         role=user["role"],
         student_id=user.get("student_id"),
         lecturer_id=user.get("lecturer_id"),
+        advisor_id=user.get("advisor_id"),
     )

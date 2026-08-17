@@ -29,6 +29,10 @@ export const PAGE_META = {
     title: "Giảng viên",
     action: { label: "Thêm giảng viên", to: "/office/lecturers", state: { form: 1 } },
   },
+  "/office/advisors": {
+    title: "Cố vấn học tập",
+    action: { label: "Thêm cố vấn", to: "/office/advisors", state: { form: 1 } },
+  },
   "/office/majors": {
     title: "Ngành học",
     action: { label: "Thêm ngành", to: "/office/majors", state: { form: 1 } },

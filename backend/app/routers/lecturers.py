@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth_dependency import require_role
-from app.models import CourseClass, HomeroomClass, Lecturer
+from app.models import CourseClass, Lecturer
 from app.schemas.lecturer import LecturerCreate, LecturerOut, LecturerPage, LecturerUpdate
 from app.services.user_service import create_user_account
 
@@ -25,7 +25,7 @@ def list_lecturers(
     page: int = Query(0, ge=0),
     size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
-    user: dict = Depends(require_role("training_office", "advisor", "lecturer")),
+    user: dict = Depends(require_role("training_office", "lecturer")),
 ):
     """Danh sách giảng viên phân trang phía server — chỉ query đúng các bản ghi của trang hiện tại."""
     stmt = select(Lecturer)
@@ -51,7 +51,7 @@ def list_lecturers(
 @router.get("/all", response_model=list[LecturerOut])
 def list_all_lecturers(
     db: Session = Depends(get_db),
-    user: dict = Depends(require_role("training_office", "advisor", "lecturer")),
+    user: dict = Depends(require_role("training_office", "lecturer")),
 ):
     """Toàn bộ giảng viên (không phân trang) — chỉ dùng cho dropdown/select của form."""
     return db.scalars(select(Lecturer).order_by(Lecturer.code)).all()
@@ -73,7 +73,7 @@ def create_lecturer(
             db,
             body.account.username,
             body.account.password,
-            body.account.role,
+            "lecturer",
             lecturer_id=lecturer.id,
         )
     db.commit()
@@ -106,7 +106,7 @@ def delete_lecturer(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office")),
 ):
-    """Xóa giảng viên — chặn nếu đang dạy lớp học phần hoặc cố vấn lớp hành chính."""
+    """Xóa giảng viên — chặn nếu đang dạy lớp học phần (bảo toàn dữ liệu điểm)."""
     lecturer = _get_lecturer_or_404(db, lecturer_id)
     has_class = db.scalar(
         select(func.count(CourseClass.id)).where(CourseClass.lecturer_id == lecturer_id)
@@ -114,13 +114,6 @@ def delete_lecturer(
     if has_class:
         raise HTTPException(
             status_code=409, detail="Không thể xóa: giảng viên đang phụ trách lớp học phần"
-        )
-    has_homeroom = db.scalar(
-        select(func.count(HomeroomClass.id)).where(HomeroomClass.advisor_id == lecturer_id)
-    ) or 0
-    if has_homeroom:
-        raise HTTPException(
-            status_code=409, detail="Không thể xóa: giảng viên đang cố vấn lớp hành chính"
         )
     db.delete(lecturer)
     db.commit()

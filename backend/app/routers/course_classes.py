@@ -81,7 +81,7 @@ def list_course_classes(
     page: int = Query(0, ge=0),
     size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
-    user: dict = Depends(require_role("training_office", "advisor", "lecturer", "student")),
+    user: dict = Depends(require_role("training_office", "lecturer", "student")),
 ):
     """Danh sách lớp học phần phân trang phía server — chỉ query đúng các bản ghi của trang hiện tại."""
     stmt = select(CourseClass)
@@ -130,7 +130,7 @@ def list_all_course_classes(
     status: str | None = None,
     course_id: int | None = None,
     db: Session = Depends(get_db),
-    user: dict = Depends(require_role("training_office", "advisor", "lecturer", "student")),
+    user: dict = Depends(require_role("training_office", "lecturer", "student")),
 ):
     """Toàn bộ lớp học phần (không phân trang) — chỉ dùng cho dropdown/select và trang đăng ký."""
     stmt = select(CourseClass)
@@ -149,9 +149,9 @@ def list_all_course_classes(
 @router.get("/mine", response_model=list[CourseClassOut])
 def my_course_classes(
     db: Session = Depends(get_db),
-    user: dict = Depends(require_role("lecturer", "advisor")),
+    user: dict = Depends(require_role("lecturer")),
 ):
-    """Các lớp học phần giảng viên đang đăng nhập phụ trách (advisor cũng là giảng viên)."""
+    """Các lớp học phần giảng viên đang đăng nhập phụ trách (cố vấn không giảng dạy)."""
     classes = db.scalars(
         select(CourseClass)
         .where(CourseClass.lecturer_id == user["lecturer_id"])
@@ -164,7 +164,7 @@ def my_course_classes(
 def get_course_class(
     course_class_id: int,
     db: Session = Depends(get_db),
-    user: dict = Depends(require_role("training_office", "advisor", "lecturer", "student")),
+    user: dict = Depends(require_role("training_office", "lecturer", "student")),
 ):
     return _course_class_out(db, _get_course_class_or_404(db, course_class_id))
 
@@ -173,11 +173,11 @@ def get_course_class(
 def list_class_enrollments(
     course_class_id: int,
     db: Session = Depends(get_db),
-    user: dict = Depends(require_role("training_office", "lecturer", "advisor")),
+    user: dict = Depends(require_role("training_office", "lecturer")),
 ):
     """Danh sách đăng ký trong 1 lớp — giảng viên chỉ xem lớp mình dạy."""
     cc = _get_course_class_or_404(db, course_class_id)
-    if user["role"] in ("lecturer", "advisor") and cc.lecturer_id != user["lecturer_id"]:
+    if user["role"] == "lecturer" and cc.lecturer_id != user["lecturer_id"]:
         raise HTTPException(status_code=403, detail="Không phải lớp bạn phụ trách")
     enrollments = db.scalars(
         select(Enrollment).where(Enrollment.course_class_id == course_class_id)

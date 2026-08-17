@@ -13,8 +13,9 @@ def create_user_account(
     role: str,
     student_id: int | None = None,
     lecturer_id: int | None = None,
+    advisor_id: int | None = None,
 ) -> User:
-    """Tạo tài khoản đăng nhập kèm theo hồ sơ Student/Lecturer."""
+    """Tạo tài khoản đăng nhập kèm theo hồ sơ Student/Lecturer/Advisor."""
     exists = db.scalar(select(User).where(User.username == username))
     if exists is not None:
         raise HTTPException(status_code=409, detail="Tên đăng nhập đã tồn tại")
@@ -24,6 +25,7 @@ def create_user_account(
         role=role,
         student_id=student_id,
         lecturer_id=lecturer_id,
+        advisor_id=advisor_id,
     )
     db.add(user)
     return user

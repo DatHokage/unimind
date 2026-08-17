@@ -38,6 +38,7 @@ export default function LecturerMyClassesPage() {
             { key: "action", label: "" },
           ]}
           rows={classes}
+          sttStart={1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <BookOpen size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -47,8 +48,8 @@ export default function LecturerMyClassesPage() {
               </p>
             </div>
           }
-          renderRow={(c) => (
-            <CourseClassRow key={c.id} cls={c}>
+          renderRow={(c, _i, stt) => (
+            <CourseClassRow key={c.id} cls={c} stt={stt}>
               <Cell className="text-right">
                 <Link to={`/lecturer/gradebook/${c.id}`}>
                   <Button size="sm" variant="secondary">

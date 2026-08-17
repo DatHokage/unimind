@@ -13,7 +13,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password
 from app.main import app
-from app.models import Base, Course, CourseClass, Enrollment, Grade, HomeroomClass, Lecturer, Major, Student, User
+from app.models import Advisor, Base, Course, CourseClass, Enrollment, Grade, HomeroomClass, Lecturer, Major, Student, User
 from app.services.grade_service import recalculate_total
 
 
@@ -77,8 +77,11 @@ def _next() -> int:
 
 
 def _make_user(db, role="student", username=None, password="password123",
-               student=None, lecturer=None) -> dict:
-    """Tạo User và trả về dict headers Authorization."""
+               student=None, lecturer=None, advisor=None) -> dict:
+    """Tạo User và trả về dict headers Authorization.
+
+    Cố vấn học tập là hồ sơ riêng (bảng advisor) — KHÔNG phải lecturer có role advisor.
+    """
     n = _next()
     user = User(
         username=username or f"user{n}",
@@ -86,6 +89,7 @@ def _make_user(db, role="student", username=None, password="password123",
         role=role,
         student_id=student.id if student else None,
         lecturer_id=lecturer.id if lecturer else None,
+        advisor_id=advisor.id if advisor else None,
     )
     db.add(user)
     db.commit()
@@ -110,6 +114,16 @@ def _make_lecturer(db, code=None) -> Lecturer:
     db.commit()
     db.refresh(lecturer)
     return lecturer
+
+
+def _make_advisor(db, code=None) -> Advisor:
+    """Cố vấn học tập — hồ sơ riêng (bảng advisor), không thuộc bảng lecturer."""
+    n = _next()
+    advisor = Advisor(code=code or f"CV{n:03d}", name=f"Cố vấn {n}")
+    db.add(advisor)
+    db.commit()
+    db.refresh(advisor)
+    return advisor
 
 
 def _make_homeroom(db, advisor=None, cohort=2023) -> HomeroomClass:
@@ -204,6 +218,11 @@ def make_major():
 @pytest.fixture()
 def make_lecturer():
     return _make_lecturer
+
+
+@pytest.fixture()
+def make_advisor():
+    return _make_advisor
 
 
 @pytest.fixture()

@@ -100,6 +100,7 @@ function SelectClassScreen() {
             { key: "action", label: "" },
           ]}
           rows={classes}
+          sttStart={1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <NotebookPen size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -109,8 +110,8 @@ function SelectClassScreen() {
               </p>
             </div>
           }
-          renderRow={(c) => (
-            <CourseClassRow key={c.id} cls={c}>
+          renderRow={(c, _i, stt) => (
+            <CourseClassRow key={c.id} cls={c} stt={stt}>
               <Cell className="text-right">
                 <Link to={`/lecturer/gradebook/${c.id}`}>
                   <Button size="sm" variant="secondary">
@@ -203,6 +204,7 @@ function GradebookScreen({ courseClassId }) {
             { key: "total", label: "Tổng kết gần nhất", align: "right" },
           ]}
           rows={rows}
+          sttStart={1}
           empty={
             <div className="py-12 text-center">
               <p className="text-sm font-medium">Lớp chưa có sinh viên nào đăng ký.</p>
@@ -211,8 +213,9 @@ function GradebookScreen({ courseClassId }) {
               </p>
             </div>
           }
-          renderRow={(r) => (
+          renderRow={(r, _i, stt) => (
             <Row key={r.id}>
+              {stt}
               <Cell className="font-medium">{r.student_code}</Cell>
               <Cell>{r.student_name}</Cell>
               <Cell>

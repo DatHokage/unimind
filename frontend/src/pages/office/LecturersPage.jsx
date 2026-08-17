@@ -3,9 +3,9 @@ import { useLocation } from "react-router-dom";
 import { ListFilter, Search, User } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { Card, DataTable, Cell, Row, Badge, Spinner, Alert, Button, Pagination } from "../../components/ui";
-import { INPUT_CLS, LABEL_CLS } from "../../utils/forms";
+import { INPUT_CLS, LABEL_CLS, SELECT_CLS } from "../../utils/forms";
 
-const EMPTY = { code: "", name: "", department: "", account: "", password: "", role: "lecturer" };
+const EMPTY = { code: "", name: "", department: "", account: "", password: "" };
 const PAGE_SIZE = 10;
 
 export default function OfficeLecturersPage() {
@@ -104,7 +104,6 @@ export default function OfficeLecturersPage() {
       department: l.department ?? "",
       account: "",
       password: "",
-      role: "lecturer",
     });
     setShowForm(true);
     setConfirmId(null);
@@ -140,10 +139,11 @@ export default function OfficeLecturersPage() {
         closeForm();
       } else {
         if (form.account.trim()) {
-          body.account = { username: form.account.trim(), password: form.password, role: form.role };
+          // Vai trò cố định: giảng viên (cố vấn học tập quản lý ở trang riêng /office/advisors)
+          body.account = { username: form.account.trim(), password: form.password, role: "lecturer" };
         }
         await api.post("/lecturers", body);
-        setSuccess(`Đã tạo giảng viên ${body.code}${body.account ? ` + tài khoản (${form.role})` : ""}`);
+        setSuccess(`Đã tạo giảng viên ${body.code}${body.account ? " + tài khoản" : ""}`);
         setForm(EMPTY);
         setShowForm(false);
       }
@@ -189,7 +189,7 @@ export default function OfficeLecturersPage() {
           Tìm
         </Button>
         <ListFilter size={15} className="text-secondary ml-2" />
-        <select className={`${INPUT_CLS} w-48`} value={appliedDept} onChange={applyDept}>
+        <select className={`${SELECT_CLS} w-48`} value={appliedDept} onChange={applyDept}>
           <option value="">Mọi khoa/bộ môn</option>
           {departments.map((d) => (
             <option key={d} value={d}>{d}</option>
@@ -222,13 +222,6 @@ export default function OfficeLecturersPage() {
             {!editing && (
               <>
                 <div>
-                  <label className={LABEL_CLS}>Loại tài khoản</label>
-                  <select className={INPUT_CLS} value={form.role} onChange={set("role")}>
-                    <option value="lecturer">Giảng viên</option>
-                    <option value="advisor">Cố vấn học tập</option>
-                  </select>
-                </div>
-                <div>
                   <label className={LABEL_CLS}>Tài khoản đăng nhập (tùy chọn)</label>
                   <input className={INPUT_CLS} value={form.account} onChange={set("account")} />
                 </div>
@@ -254,6 +247,7 @@ export default function OfficeLecturersPage() {
             { key: "action", label: "" },
           ]}
           rows={lecturers}
+          sttStart={page * PAGE_SIZE + 1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <User size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -267,8 +261,9 @@ export default function OfficeLecturersPage() {
               </p>
             </div>
           }
-          renderRow={(l) => (
+          renderRow={(l, _i, stt) => (
             <Row key={l.id}>
+              {stt}
               <Cell className="font-medium">{l.code}</Cell>
               <Cell>{l.name}</Cell>
               <Cell>

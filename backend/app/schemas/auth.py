@@ -13,6 +13,7 @@ class UserInfo(BaseModel):
     role: str
     student_id: int | None = None
     lecturer_id: int | None = None
+    advisor_id: int | None = None
 
 
 LoginResponse.model_rebuild()

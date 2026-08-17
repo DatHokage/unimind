@@ -61,6 +61,7 @@ export default function MyEnrollmentsPage() {
             { key: "action", label: "" },
           ]}
           rows={enrollments}
+          sttStart={1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <ClipboardList size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -72,10 +73,11 @@ export default function MyEnrollmentsPage() {
               </div>
             </div>
           }
-          renderRow={(e) => {
+          renderRow={(e, _i, stt) => {
             const st = enrollmentStatus(e.status);
             return (
               <Row key={e.id}>
+                {stt}
                 <Cell className="font-medium">{e.course_code}</Cell>
                 <Cell className="whitespace-normal min-w-40">{e.course_name}</Cell>
                 <Cell>{fmtTerm(e.year, e.term)}</Cell>

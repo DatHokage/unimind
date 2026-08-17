@@ -11,12 +11,14 @@ export const classStatusBadge = (status) =>
  * Hàng lớp học phần chuẩn hóa — dùng chung cho "Lớp học phần của tôi"
  * (giảng viên) và "Quản lý lớp học phần" (phòng đào tạo).
  * `showLecturer`: thêm cột giảng viên sau lịch học (trang phòng đào tạo).
+ * `stt`: ô số thứ tự do DataTable render sẵn (chỉ trang admin truyền vào).
  * `children`: các ô bổ sung riêng từng trang (thao tác đóng/mở lớp...).
  */
-export function CourseClassRow({ cls, showLecturer = false, children }) {
+export function CourseClassRow({ cls, showLecturer = false, stt = null, children }) {
   const st = classStatusBadge(cls.status);
   return (
     <Row>
+      {stt}
       <Cell className="font-medium">{cls.course_code}</Cell>
       <Cell className="whitespace-normal min-w-40">{cls.course_name}</Cell>
       <Cell>{fmtTerm(cls.year, cls.term)}</Cell>

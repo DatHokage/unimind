@@ -4,7 +4,8 @@ from app.schemas.student import AccountCreate
 
 
 class LecturerAccountCreate(AccountCreate):
-    role: str = Field(default="lecturer", pattern="^(lecturer|advisor)$")
+    # Giảng viên không kiêm cố vấn — cố vấn là hồ sơ riêng (bảng advisor)
+    role: str = Field(default="lecturer", pattern="^lecturer$")
 
 
 class LecturerCreate(BaseModel):

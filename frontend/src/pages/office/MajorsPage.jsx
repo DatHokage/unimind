@@ -207,6 +207,7 @@ export default function OfficeMajorsPage() {
             { key: "action", label: "" },
           ]}
           rows={majors}
+          sttStart={page * PAGE_SIZE + 1}
           empty={
             <div className="flex flex-col items-center py-12 text-center">
               <BookMarked size={36} strokeWidth={1.5} className="text-secondary/60 mb-3" />
@@ -220,8 +221,9 @@ export default function OfficeMajorsPage() {
               </p>
             </div>
           }
-          renderRow={(m) => (
+          renderRow={(m, _i, stt) => (
             <Row key={m.id}>
+              {stt}
               <Cell className="font-medium">{m.code}</Cell>
               <Cell>{m.name}</Cell>
               <Cell className="text-right">

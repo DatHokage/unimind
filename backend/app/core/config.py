@@ -78,10 +78,25 @@ class Settings(BaseSettings):
         # (env.py) đều đọc SUPABASE_DB_URL từ settings — KHÔNG nơi nào trong
         # code ghép chuỗi URL thủ công.
         self.SUPABASE_DB_URL = normalize_db_url(self.SUPABASE_DB_URL)
-        # Debug khi deploy: chỉ in scheme — KHÔNG bao giờ in full URL/password.
-        # Xóa 2 dòng này khi migration trên Render đã chạy ổn định.
-        scheme = self.SUPABASE_DB_URL.split("://", 1)[0]
-        print(f"[config] DB URL scheme = {scheme!r}", flush=True)
+        # Debug khi deploy: chỉ in scheme + user + host — KHÔNG bao giờ in full
+        # URL/password.
+        scheme, rest = self.SUPABASE_DB_URL.split("://", 1)
+        if scheme.startswith("postgresql"):
+            userinfo, _, hostpart = rest.partition("@")
+            user, _, _ = userinfo.partition(":")
+            host, _, _ = hostpart.partition("/")
+            print(f"[config] DB URL scheme = {scheme!r}, user = {user!r}, host = {host!r}", flush=True)
+            # Bẫy phổ biến khi deploy: Connection Pooler của Supabase bắt buộc
+            # user dạng `postgres.<project-ref>`. Thiếu `.<project-ref>` thì
+            # Supabase báo FATAL: password authentication failed dù mật khẩu ĐÚNG.
+            if "pooler.supabase.com" in host and "." not in user:
+                print(
+                    "[config] CANH BAO: user pooler Supabase phai la 'postgres.<project-ref>' "
+                    f"(hien chi co {user!r}) — sua lai SUPABASE_DB_URL tren Render.",
+                    flush=True,
+                )
+        else:
+            print(f"[config] DB URL scheme = {scheme!r}", flush=True)
 
 
 settings = Settings()

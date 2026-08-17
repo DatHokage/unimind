@@ -13,14 +13,14 @@ def test_student_sees_own_grades_only(client, db, make_user, make_student, make_
     assert resp.status_code == 403
 
 
-def test_advisor_sees_only_own_homeroom_students(client, db, make_user, make_lecturer, make_homeroom, make_student, make_course, make_course_class, make_enrollment):
-    advisor = make_lecturer(db)
-    other_advisor = make_lecturer(db)
+def test_advisor_sees_only_own_homeroom_students(client, db, make_user, make_advisor, make_homeroom, make_student, make_course, make_course_class, make_enrollment):
+    advisor = make_advisor(db)
+    other_advisor = make_advisor(db)
     my_class = make_homeroom(db, advisor=advisor)
     foreign_class = make_homeroom(db, advisor=other_advisor)
     my_student = make_student(db, homeroom=my_class)
     foreign_student = make_student(db, homeroom=foreign_class)
-    h_advisor = make_user(db, role="advisor", lecturer=advisor)
+    h_advisor = make_user(db, role="advisor", advisor=advisor)
 
     # Xem điểm sinh viên lớp mình
     resp = client.get(f"/grades/student/{my_student.id}", headers=h_advisor)
@@ -35,12 +35,12 @@ def test_advisor_sees_only_own_homeroom_students(client, db, make_user, make_lec
     assert resp.status_code == 403
 
 
-def test_advisor_lists_only_own_homeroom_classes(client, db, make_user, make_lecturer, make_homeroom):
-    advisor = make_lecturer(db)
+def test_advisor_lists_only_own_homeroom_classes(client, db, make_user, make_advisor, make_homeroom):
+    advisor = make_advisor(db)
     make_homeroom(db, advisor=advisor)
     make_homeroom(db, advisor=advisor)
     make_homeroom(db)  # lớp không có advisor
-    h = make_user(db, role="advisor", lecturer=advisor)
+    h = make_user(db, role="advisor", advisor=advisor)
     resp = client.get("/homeroom-classes/mine", headers=h)
     assert resp.status_code == 200
     assert len(resp.json()) == 2
