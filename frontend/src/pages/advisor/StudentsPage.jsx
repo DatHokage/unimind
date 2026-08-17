@@ -8,7 +8,7 @@ import { fmtDate } from "../../utils/format";
 const inputCls =
   "border border-border rounded-lg px-3 py-2 text-sm bg-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors duration-150";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 /**
  * Danh sách sinh viên của cố vấn — 2 chế độ:

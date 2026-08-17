@@ -30,7 +30,7 @@ def list_students(
     major_id: int | None = None,
     search: str | None = None,
     page: int = Query(0, ge=0),
-    size: int = Query(20, ge=1, le=100),
+    size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office", "advisor", "lecturer")),
 ):

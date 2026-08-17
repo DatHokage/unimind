@@ -7,7 +7,7 @@ import { INPUT_CLS, LABEL_CLS } from "../../utils/forms";
 import { fmtDate } from "../../utils/format";
 
 const EMPTY = { code: "", name: "", dob: "", major_id: "", class_id: "", account: "", password: "" };
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 export default function OfficeStudentsPage() {
   const location = useLocation();
