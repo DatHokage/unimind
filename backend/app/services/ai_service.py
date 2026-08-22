@@ -8,9 +8,13 @@ from app.core.config import settings
 from app.models import Course, CourseClass, Enrollment, Grade, HomeroomClass, Student
 from app.services.course_service import get_prerequisite_ids
 from app.services.enrollment_service import check_enrollment_eligibility, count_enrollments
-from app.services.grade_service import compute_gpa
+from app.services.grade_service import compute_gpa, convert_score10, is_passed
 from app.services.llm_service import LLMError, call_llm_json
-from app.services.prompts import build_course_advice_prompt, build_study_summary_prompt
+from app.services.prompts import (
+    build_class_overview_prompt,
+    build_course_advice_prompt,
+    build_study_summary_prompt,
+)
 
 
 def _student_brief(db: Session, student: Student) -> dict:
@@ -196,3 +200,164 @@ async def run_study_summary(db: Session, student_id: int) -> tuple[dict, bool]:
         )
     except LLMError:
         return {"summary": None, "warnings": [], "suggestions": []}, True
+
+
+# Ngưỡng cảnh báo rủi ro học vụ cho AI đánh giá lớp (GPA hệ 4 / số môn / điểm hệ 10).
+RISK_GPA_HIGH = 2.0       # dưới ngưỡng này → nguy cơ cao
+RISK_GPA_MEDIUM = 2.5     # dưới ngưỡng này → nguy cơ trung bình
+RISK_FAILED_HIGH = 3      # từ số môn nợ này trở lên → nguy cơ cao
+RISK_TREND_DROP = -1.0    # TB kỳ gần giảm quá ngưỡng so kỳ liền trước → nguy cơ trung bình
+RISK_TREND_RISE = 1.0     # TB kỳ gần tăng quá ngưỡng so kỳ liền trước → tính là đi lên
+
+
+def _class_score_rows(db: Session, homeroom_id: int) -> dict[int, list[tuple]]:
+    """student_id -> [(year, term, total_score, credits, counted_in_gpa)] của cả lớp — 1 query."""
+    rows = db.execute(
+        select(
+            Enrollment.student_id,
+            CourseClass.year,
+            CourseClass.term,
+            Grade.total_score,
+            Course.credits,
+            Course.counted_in_gpa,
+        )
+        .join(Grade, Grade.enrollment_id == Enrollment.id)
+        .join(CourseClass, CourseClass.id == Enrollment.course_class_id)
+        .join(Course, Course.id == CourseClass.course_id)
+        .where(
+            Enrollment.student_id.in_(
+                select(Student.id).where(Student.class_id == homeroom_id)
+            )
+        )
+    ).all()
+    by_student: dict[int, list[tuple]] = {}
+    for sid, year, term, total, credits, counted in rows:
+        by_student.setdefault(sid, []).append((year, term, total, credits, counted))
+    return by_student
+
+
+def _student_metrics(score_rows: list[tuple]) -> dict:
+    """GPA/tín chỉ/nợ môn/xu hướng của 1 SV — đúng ngữ nghĩa compute_gpa
+    (F vẫn tính vào GPA, HP counted_in_gpa=False loại khỏi GPA nhưng Đạt vẫn cộng tích lũy)."""
+    weighted4 = weighted10 = 0.0
+    credits = accumulated = failed = 0
+    term_scores: dict[tuple[int, int], list[float]] = {}
+    for _year, _term, total, n_credits, counted in score_rows:
+        if total is None:
+            continue
+        letter, score4 = convert_score10(total)
+        if is_passed(letter):
+            accumulated += n_credits  # tích lũy: ngữ nghĩa compute_gpa (D vẫn cộng)
+        if total < settings.PASS_THRESHOLD:
+            # nợ môn: cùng ngưỡng 5.0 với trang thống kê & kiểm tra tiên quyết
+            failed += 1
+        term_scores.setdefault((_year, _term), []).append(total)
+        if not counted:
+            continue
+        weighted4 += (score4 or 0) * n_credits
+        weighted10 += total * n_credits
+        credits += n_credits
+
+    gpa4 = round(weighted4 / credits, 2) if credits else None
+    gpa10 = round(weighted10 / credits, 2) if credits else None
+    trend = None
+    if len(term_scores) >= 2:
+        avgs = [
+            round(sum(v) / len(v), 2) for _, v in sorted(term_scores.items())
+        ]
+        trend = round(avgs[-1] - avgs[-2], 2)
+    return {
+        "gpa4": gpa4,
+        "gpa10": gpa10,
+        "accumulated_credits": accumulated,
+        "failed_count": failed,
+        "trend": trend,
+    }
+
+
+def _risk_level(m: dict) -> str | None:
+    """Mức rủi ro học vụ theo rule server (không do AI quyết định)."""
+    gpa4, failed, trend = m["gpa4"], m["failed_count"], m["trend"]
+    if gpa4 is None:
+        return None
+    if gpa4 < RISK_GPA_HIGH or failed >= RISK_FAILED_HIGH:
+        return "high"
+    if gpa4 < RISK_GPA_MEDIUM or failed >= 1 or (trend is not None and trend <= RISK_TREND_DROP):
+        return "medium"
+    return "low"
+
+
+async def run_class_overview(db: Session, homeroom_id: int) -> dict:
+    """AI đánh giá TỔNG QUAN lớp hành chính cho cố vấn (điểm mạnh/điểm yếu/gợi ý).
+
+    Bảo mật tối đa: payload gửi LLM chỉ là SỐ LIỆU TỔNG HỢP của cả lớp —
+    không có dữ liệu riêng của bất kỳ sinh viên nào (kể cả mã giả), tất nhiên
+    càng không tên/MSSV. AI chỉ diễn giải ở mức lớp; mọi con số hiển thị
+    (stats) do server tự tính — không tin output AI.
+    """
+    students = db.scalars(
+        select(Student).where(Student.class_id == homeroom_id).order_by(Student.id)
+    ).all()
+    by_student = _class_score_rows(db, homeroom_id)
+
+    metrics = [_student_metrics(by_student.get(s.id, [])) for s in students]
+    graded = [m for m in metrics if m["gpa4"] is not None]
+    risk_counts = {"high": 0, "medium": 0, "low": 0}
+    for m in metrics:
+        level = _risk_level(m)
+        if level:
+            risk_counts[level] += 1
+
+    stats = {
+        "class_size": len(students),
+        "students_with_grades": len(graded),
+        "students_without_grades": len(students) - len(graded),
+        "avg_gpa4": (
+            round(sum(m["gpa4"] for m in graded) / len(graded), 2) if graded else None
+        ),
+        "avg_gpa10": (
+            round(sum(m["gpa10"] for m in graded) / len(graded), 2) if graded else None
+        ),
+        "risk_counts": risk_counts,
+    }
+
+    # Payload tổng hợp: đủ màu để nhận xét điểm mạnh/yếu nhưng không đếm xấu ai
+    payload = {
+        **stats,
+        "highest_gpa4": max((m["gpa4"] for m in graded), default=None),
+        "lowest_gpa4": min((m["gpa4"] for m in graded), default=None),
+        "total_failed_courses": sum(m["failed_count"] for m in metrics),
+        "students_with_failed_courses": sum(1 for m in metrics if m["failed_count"] > 0),
+        "avg_accumulated_credits": (
+            round(sum(m["accumulated_credits"] for m in graded) / len(graded), 1)
+            if graded
+            else None
+        ),
+        "students_declining": sum(
+            1 for m in metrics if m["trend"] is not None and m["trend"] <= RISK_TREND_DROP
+        ),
+        "students_improving": sum(
+            1 for m in metrics if m["trend"] is not None and m["trend"] >= RISK_TREND_RISE
+        ),
+    }
+
+    try:
+        result = await call_llm_json(build_class_overview_prompt(payload))
+    except LLMError:
+        return {
+            "summary": None,
+            "strengths": [],
+            "weaknesses": [],
+            "suggestions": [],
+            "stats": stats,
+            "fallback": True,
+        }
+
+    return {
+        "summary": str(result.get("summary", "")).strip() or None,
+        "strengths": [str(x) for x in result.get("strengths", [])],
+        "weaknesses": [str(x) for x in result.get("weaknesses", [])],
+        "suggestions": [str(x) for x in result.get("suggestions", [])],
+        "stats": stats,
+        "fallback": False,
+    }

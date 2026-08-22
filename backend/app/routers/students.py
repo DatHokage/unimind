@@ -3,7 +3,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.dependencies.auth_dependency import get_current_user, require_role
+from app.dependencies.auth_dependency import get_current_user, get_target_student, require_role
 from app.models import Enrollment, HomeroomClass, Major, Student
 from app.schemas.student import StudentCreate, StudentOut, StudentPage, StudentUpdate
 from app.services.user_service import create_user_account
@@ -32,9 +32,13 @@ def list_students(
     page: int = Query(0, ge=0),
     size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
-    user: dict = Depends(require_role("training_office", "advisor", "lecturer")),
+    user: dict = Depends(require_role("training_office", "lecturer")),
 ):
-    """Danh sách sinh viên phân trang phía server — chỉ query đúng các bản ghi của trang hiện tại."""
+    """Danh sách sinh viên phân trang phía server — chỉ query đúng các bản ghi của trang hiện tại.
+
+    Cố vấn KHÔNG có quyền liệt kê SV toàn trường — chỉ xem lớp mình qua
+    GET /homeroom-classes/{id}/students (trang "Kết quả sinh viên" đã bỏ).
+    """
     stmt = select(Student)
     if class_id is not None:
         stmt = stmt.where(Student.class_id == class_id)
@@ -87,13 +91,11 @@ def get_student(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    # training_office xem ai cũng được; student chỉ xem chính mình
-    if user["role"] == "student" and user["student_id"] != student_id:
-        raise HTTPException(status_code=403, detail="Không đủ quyền truy cập")
-    if user["role"] not in ("training_office", "student"):
-        raise HTTPException(status_code=403, detail="Không đủ quyền truy cập")
+    # training_office xem ai cũng được; student chỉ xem chính mình;
+    # advisor chỉ SV thuộc lớp mình phụ trách (trang chi tiết từ danh sách lớp)
+    get_target_student(db, user, student_id)
     student = db.get(Student, student_id)
-    if student is None:
+    if student is None:  # đã 404 trong get_target_student — phòng hờ
         raise HTTPException(status_code=404, detail="Không tìm thấy sinh viên")
     return _student_out(db, student)
 

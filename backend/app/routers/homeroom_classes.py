@@ -189,6 +189,17 @@ def delete_homeroom_class(
     return {"detail": f"Đã xóa lớp hành chính {hc.name}"}
 
 
+@router.get("/{homeroom_id}", response_model=HomeroomClassOut)
+def get_homeroom_class(
+    homeroom_id: int,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("training_office", "advisor")),
+):
+    """Chi tiết một lớp hành chính — advisor chỉ xem lớp mình phụ trách."""
+    hc = assert_advisor_owns_homeroom(db, user, homeroom_id)
+    return _homeroom_out(db, hc)
+
+
 @router.get("/{homeroom_id}/students", response_model=list[StudentOut])
 def list_homeroom_students(
     homeroom_id: int,

@@ -53,11 +53,18 @@ export default function AdvisorMyClassesPage() {
               <Cell>{c.cohort ?? "—"}</Cell>
               <NumCell>{c.student_count ?? 0}</NumCell>
               <Cell className="text-right">
-                <Link to={`/advisor/classes/${c.id}/students`}>
-                  <Button size="sm" variant="secondary">
-                    Xem sinh viên →
-                  </Button>
-                </Link>
+                <span className="inline-flex gap-2">
+                  <Link to={`/advisor/classes/${c.id}/overview`}>
+                    <Button size="sm" variant="secondary">
+                      AI đánh giá
+                    </Button>
+                  </Link>
+                  <Link to={`/advisor/classes/${c.id}/students`}>
+                    <Button size="sm" variant="secondary">
+                      Xem sinh viên →
+                    </Button>
+                  </Link>
+                </span>
               </Cell>
             </Row>
           )}

@@ -18,7 +18,6 @@ export const PAGE_META = {
   "/lecturer/gradebook": { title: "Sổ điểm quá trình" },
 
   "/advisor": { title: "Lớp phụ trách" },
-  "/advisor/results": { title: "Kết quả sinh viên" },
 
   "/office": { title: "Kết quả học tập" },
   "/office/students": {
@@ -61,6 +60,18 @@ export const ACTION_ICON = Plus;
  */
 export function getPageMeta(pathname) {
   if (PAGE_META[pathname]) return PAGE_META[pathname];
+  // Trang quản lý sinh viên của một lớp hành chính — không kế thừa action "+ Thêm lớp"
+  if (/^\/office\/homerooms\/\d+\/students$/.test(pathname)) {
+    return { title: "Sinh viên lớp hành chính" };
+  }
+  // Trang quản lý sinh viên của một lớp học phần — không kế thừa action "+ Mở lớp mới"
+  if (/^\/office\/course-classes\/\d+\/students$/.test(pathname)) {
+    return { title: "Sinh viên lớp học phần" };
+  }
+  // Trang AI đánh giá một lớp hành chính của cố vấn
+  if (/^\/advisor\/classes\/\d+\/overview$/.test(pathname)) {
+    return { title: "AI đánh giá lớp hành chính" };
+  }
   const parts = pathname.split("/").filter(Boolean); // ["lecturer","gradebook","12"]
   const key = `/${parts.slice(0, 2).join("/")}`;
   return PAGE_META[key] ?? { title: "" };

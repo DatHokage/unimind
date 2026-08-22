@@ -39,6 +39,26 @@ class StudySummaryResponse(BaseModel):
     fallback: bool = False
 
 
+class ClassOverviewRequest(BaseModel):
+    class_id: int
+
+
+class ClassOverviewResponse(BaseModel):
+    """AI đánh giá TỔNG QUAN lớp hành chính cho cố vấn.
+
+    Chỉ SỐ LIỆU TỔNG HỢP của lớp được gửi ra LLM — không dữ liệu riêng của
+    từng sinh viên. strengths/weaknesses/suggestions do AI viết ở mức lớp;
+    stats là số liệu server tự tính (không tin output AI).
+    """
+
+    summary: str | None = None
+    strengths: list[str] = []
+    weaknesses: list[str] = []
+    suggestions: list[str] = []
+    stats: dict = {}
+    fallback: bool = False
+
+
 class RegulationChatRequest(BaseModel):
     question: str
     session_id: str = "default"  # định danh phiên chat (giữ ngữ cảnh hỏi-đáp)

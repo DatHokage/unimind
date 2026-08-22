@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ListFilter, School, Search } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { Card, DataTable, Cell, NumCell, Row, Spinner, Alert, Button, Pagination } from "../../components/ui";
@@ -309,6 +309,11 @@ export default function OfficeHomeroomsPage() {
                   </span>
                 ) : (
                   <span className="inline-flex gap-1">
+                    <Link to={`/office/homerooms/${h.id}/students`}>
+                      <Button size="sm" variant="secondary">
+                        Sinh viên
+                      </Button>
+                    </Link>
                     <Button size="sm" variant="secondary" onClick={() => startEdit(h)}>
                       Sửa
                     </Button>

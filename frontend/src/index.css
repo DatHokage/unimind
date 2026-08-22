@@ -33,3 +33,433 @@ body {
 .num {
   font-variant-numeric: tabular-nums;
 }
+
+/* ===== Trang đăng nhập — "Tri thức trôi nổi" trên nền ấm =====
+   Lớp 0: gradient ấm paper/mist + glow nhẹ; lớp 1: WebGL Three.js với các trang giấy
+   trôi nổi có cạnh vàng signature; lớp 2: vignette mềm không làm tối nền.
+   prefers-reduced-motion: tắt motion CSS, cảnh 3D tự render 1 frame tĩnh.
+
+   Color tokens theo thiết kế UniMind:
+   --paper: #F7F5F0
+   --mist: #ECEEE9
+   --brand: #0095FF
+   --gold: #D9B979 */
+
+.login-root {
+  background: linear-gradient(135deg, #F7F5F0 0%, #ECEEE9 100%);
+}
+
+/* Khối chữ cột trái đổi cả nhóm theo giờ — DeskScene ghi đè lên :root khi trời tối
+   (mặc định dưới là màu ban ngày): ba dòng cùng họ màu lạnh dịu về đêm */
+:root {
+  --eyebrow: #6B6B60;
+  --inkline: #2E2E2A;
+  --blueline: #0095FF;
+}
+
+.login-bg-base {
+  background:
+    radial-gradient(ellipse 70% 60% at 28% 38%, rgba(217, 185, 121, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 78% 22%, rgba(0, 149, 255, 0.05) 0%, transparent 58%),
+    linear-gradient(135deg, #F7F5F0 0%, #ECEEE9 100%);
+}
+
+/* Quầng sáng trôi chậm — chỉ animate transform, nhẹ GPU.
+   Gradient radial đã tự mềm tới transparent nên KHÔNG thêm filter: blur:
+   blur trên lớp ~45vw×55vh là một trong những lớp raster đắt nhất mobile. */
+.login-fog {
+  background: radial-gradient(circle, rgba(217, 185, 121, 0.09) 0%, transparent 70%);
+  animation: fog-drift 46s ease-in-out infinite alternate;
+}
+.login-fog-slow {
+  animation-duration: 60s;
+  animation-direction: alternate-reverse;
+  background: radial-gradient(circle, rgba(0, 149, 255, 0.06) 0%, transparent 70%);
+}
+@keyframes fog-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(3.5vw, -2.5vh, 0) scale(1.10); }
+}
+
+/* Vignette bản sáng — ấm nhẹ ở rìa, không làm tối nền */
+.login-vignette {
+  background: radial-gradient(
+    ellipse 120% 100% at 50% 45%,
+    transparent 60%,
+    rgba(140, 140, 130, 0.08) 100%
+  );
+}
+
+/* Xuất hiện mềm khi vào trang */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.login-rise {
+  animation: rise-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Thẻ đăng nhập nghiêng theo con trỏ — chỉ transform, không ảnh hưởng layout
+   (will-change cho máy có chuột tinh chỉnh nằm ở media query cuối section) */
+.login-tilt-card {
+  transform-style: preserve-3d;
+}
+.login-tilt-card.is-settling {
+  transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ===== Nền đăng nhập — "Bàn học flat-lay" (SVG, DeskScene.jsx) =====
+   Nhìn từ trên xuống: cà phê, sách mở, bút chì thành cụm dưới trái, chừa
+   trống cho chữ (trái) và card (phải). Biến do rAF trong DeskScene ghi:
+   --mx/--my parallax chuột (-1..1)    --sx/--sy hướng bóng theo mặt trời
+   --sscale  độ kéo dài bóng           --ambient lớp phủ ánh sáng theo giờ
+   --skytop/--skybot gradient bầu trời --stars  độ hiện của sao đêm
+   --pool    vũng đèn ấm giữ chữ dễ đọc khi tối
+   --lampbook đèn đọc sách buổi tối   --steam khói cà phê  --dustglow bụi */
+.desk-scene {
+  --mx: 0;
+  --my: 0;
+  --sx: -24px;
+  --sy: -14px;
+  --sscale: 1.18;
+  --skytop: rgb(207, 232, 255);
+  --skybot: rgb(253, 246, 232);
+  --ambient: rgba(255, 250, 240, 0);
+  --stars: 0;
+  --pool: 0;
+  --lampbook: 0;
+  --steam: 0.35;
+  --dustglow: 0.5;
+  /* Diện mạo mặt trời/trăng (DeskScene ghi đè theo giờ) */
+  --suncolor: #FFD68A;
+  --sunglow: rgba(255, 214, 138, 0.5);
+  --sunmode: 1;
+  --moonn: 0;
+}
+
+/* Bầu trời toàn màn — gradient đỉnh→chân trời nội suy theo thời gian.
+   Lớp phủ ánh sáng theo giờ (--ambient) nằm ở ĐÂY, dưới mọi đồ vật, nên
+   đêm về sách/bút chì/cà phê giữ nguyên độ sáng như đang được đèn chiếu. */
+.desk-sky {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, var(--skytop) 0%, var(--skybot) 78%),
+    var(--ambient);
+}
+
+/* Sao đêm — lấp lánh chậm, tổng thể hiện dần theo --stars */
+.desk-starwrap {
+  position: absolute;
+  inset: 0;
+  opacity: var(--stars);
+}
+.desk-star {
+  position: absolute;
+  border-radius: 50%;
+  background: #fff7e6;
+  box-shadow: 0 0 6px 1px rgba(255, 247, 230, 0.8);
+  animation-name: desk-twinkle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+@keyframes desk-twinkle {
+  from { opacity: 0.3; transform: scale(0.75); }
+  to   { opacity: 1; transform: scale(1.2); }
+}
+
+/* Mặt trời → mặt trăng sống động: điểm neo 0×0, rAF chỉ ghi transform.
+   Diện mạo gồm 4 lớp — tia nắng quay chậm, quầng thở, lõi rực, hố trăng đêm */
+.desk-sunmoon {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+.desk-sunmoon > span {
+  position: absolute;
+  border-radius: 50%;
+}
+
+/* Tia nắng — chùm quay rất chậm quanh đĩa, tan dần khi chiều xuống */
+.desk-sun-rays {
+  width: 176px;
+  height: 176px;
+  margin: -88px 0 0 -88px;
+  background: repeating-conic-gradient(
+    from 0deg,
+    var(--sunglow, rgba(255, 214, 138, 0.5)) 0deg 7deg,
+    transparent 9deg 30deg
+  );
+  -webkit-mask-image: radial-gradient(circle, transparent 27%, #000 33%, transparent 74%);
+  mask-image: radial-gradient(circle, transparent 27%, #000 33%, transparent 74%);
+  filter: blur(1px);
+  opacity: calc(0.55 * var(--sunmode, 1));
+  animation: desk-rays-spin 44s linear infinite;
+}
+@keyframes desk-rays-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Quầng thở — nở co chậm như khí quyển */
+.desk-sun-halo {
+  width: 150px;
+  height: 150px;
+  margin: -75px 0 0 -75px;
+  background: radial-gradient(circle, var(--sunglow, rgba(255, 214, 138, 0.5)) 0%, transparent 60%);
+  animation: desk-halo-breathe 6s ease-in-out infinite;
+}
+@keyframes desk-halo-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50%      { transform: scale(1.16); opacity: 1; }
+}
+
+/* Lõi đĩa — trắng rực lệch tâm → màu thiên thể ở rìa + viền sáng mềm */
+.desk-sun-core {
+  width: 50px;
+  height: 50px;
+  margin: -25px 0 0 -25px;
+  background: radial-gradient(circle at 40% 36%, #FFFDF2 0%, #FFEFB5 42%, var(--suncolor, #FFD68A) 84%);
+  box-shadow:
+    inset -5px -7px 12px rgba(214, 142, 60, 0.28),
+    0 0 16px 3px var(--sunglow, rgba(255, 214, 138, 0.5));
+}
+
+/* Mặt trăng — ba hố va chạm + bóng chấm dập chỉ hiện về đêm (--moonn) */
+.desk-moon {
+  width: 50px;
+  height: 50px;
+  margin: -25px 0 0 -25px;
+  opacity: var(--moonn, 0);
+}
+.desk-moon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  /* Tối rìa dưới-phải → khối cầu, không còn đĩa phẳng */
+  background: radial-gradient(circle at 34% 30%, transparent 52%, rgba(24, 34, 74, 0.3) 80%);
+}
+.desk-moon i {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(126, 148, 199, 0.5);
+  box-shadow:
+    inset 1.5px 2px 3px rgba(16, 24, 58, 0.35),
+    inset -1px -1px 2px rgba(222, 234, 255, 0.55);
+}
+.desk-moon i:nth-child(1) { left: 10px; top: 9px;  width: 12px; height: 12px; }
+.desk-moon i:nth-child(2) { left: 29px; top: 21px; width: 7px;  height: 7px; }
+.desk-moon i:nth-child(3) { left: 15px; top: 31px; width: 5px;  height: 5px; }
+
+/* Ba lớp chiều sâu — dịch ngược chuột theo --depth (đặt inline trong JSX) */
+.desk-layer {
+  position: absolute;
+  inset: 0;
+  transform: translate(
+    calc(var(--mx) * var(--depth, 0) * -1px),
+    calc(var(--my) * var(--depth, 0) * -0.62px)
+  );
+}
+.desk-svg {
+  position: absolute;
+  overflow: visible;
+}
+
+/* Vị trí đồ vật — cụm tĩnh vật dưới trái: ly cà phê → sách mở → bút chì
+   nằm xiên chạm mép trang phải của sách, cả cụm cân quanh ly cà phê */
+.desk-item-book    { left: 14.5vw; bottom: 12.5vh; width: min(23vw, 330px); }
+.desk-item-coffee  { left: 3.5vw; bottom: 13vh; width: min(12vw, 175px); }
+.desk-item-pencil  { left: 30.5vw; bottom: 10vh; width: min(19vw, 280px); }
+
+/* Bóng đổ đồ vật xoay + kéo dài theo góc nắng (bánh xe chuột điều khiển) */
+.desk-shadow {
+  transform: translate(var(--sx), var(--sy)) scale(var(--sscale));
+}
+
+/* Góc trang lay nhẹ — neo ở cạnh gáy (bên trái mảnh) */
+.desk-flutter {
+  transform-box: fill-box;
+  transform-origin: 12% 88%;
+  animation: desk-flutter 5.2s ease-in-out infinite;
+}
+@keyframes desk-flutter {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  50%      { transform: rotate(-5deg) translateY(-2.5px); }
+}
+
+/* Khói cà phê — ba dải uốn lượn bay lên + lắc ngang + phồng/xẹp nhẹ,
+   nhịp lệch pha nhau để khói lúc nào cũng đang "sống"; đậm nhạt theo --steam */
+.desk-steam {
+  opacity: var(--steam);
+}
+.desk-steam path {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: desk-steam-rise 4.2s ease-in-out infinite;
+}
+.desk-steam path:nth-of-type(1) { animation-duration: 3.8s; animation-delay: -0.6s; }
+.desk-steam path:nth-of-type(2) { animation-duration: 4.7s; animation-delay: -2.4s; }
+.desk-steam path:nth-of-type(3) { animation-duration: 4.1s; animation-delay: -3.3s; }
+@keyframes desk-steam-rise {
+  0%   { transform: translateY(12px) translateX(0) scale(0.9, 0.82); opacity: 0; }
+  28%  { opacity: 1; }
+  55%  { transform: translateY(-8px) translateX(5px) scale(1.05, 1.06); opacity: 0.8; }
+  78%  { opacity: 0.9; }
+  100% { transform: translateY(-30px) translateX(-4px) scale(0.88, 0.94); opacity: 0; }
+}
+
+/* Bụi sáng lơ lửng — bay rất chậm, tổng thể sáng dần về tối (--dustglow) */
+.desk-dustwrap {
+  position: absolute;
+  inset: 0;
+  opacity: var(--dustglow);
+}
+.desk-dust {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 242, 205, 0.95) 0%, rgba(255, 240, 200, 0) 70%);
+  animation-name: desk-dust-float;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+@keyframes desk-dust-float {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-26px); }
+}
+
+/* Vũng đèn ấm — hiện dần khi trời tối, giữ vùng chữ/card đủ sáng để đọc.
+   Đặt TRỌNG TÂM THẤP (66% màn hình) để không tràn lên khối chữ lớn: nền sau
+   chữ về đêm giữ tối, chữ ngà/gilt mới đủ tương phản; cụm đồ vật vẫn ấm đèn.
+   Ban ngày opacity 0 (trời tự sáng). */
+.desk-pool {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 72% 58% at 42% 66%,
+    rgba(255, 241, 214, 0.95) 0%,
+    rgba(255, 238, 205, 0.6) 46%,
+    transparent 76%
+  );
+  opacity: var(--pool);
+}
+
+/* Bóng mềm sau chữ — chỉ hiện về đêm (--nightshade do DeskScene ghi),
+   giúp chữ sáng tách khỏi vệt sáng mờ phía sau mà không cần viền đậm */
+.night-shade {
+  text-shadow:
+    0 2px 26px rgba(14, 19, 43, calc(var(--nightshade, 0) * 0.9)),
+    0 1px 3px rgba(14, 19, 43, calc(var(--nightshade, 0) * 0.4));
+}
+
+/* Đèn đọc sách buổi tối — quầng ấm chiếu thẳng lên cụm cà phê + sách + bút chì
+   (dưới trái), giúp đồ vật nổi bật trên nền đêm thay vì chìm vào bóng tối */
+.desk-lampbook {
+  position: absolute;
+  left: 0;
+  bottom: -6vh;
+  width: min(52vw, 780px);
+  height: 56vh;
+  opacity: var(--lampbook);
+  background: radial-gradient(
+    ellipse at 44% 58%,
+    rgba(255, 214, 140, 0.55) 0%,
+    rgba(255, 206, 130, 0.18) 45%,
+    transparent 72%
+  );
+}
+
+/* Quầng ấm theo con trỏ — transform ghi trực tiếp từ rAF */
+.desk-cursorlamp {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 360px;
+  height: 360px;
+  margin: -180px 0 0 -180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 228, 170, 0.6) 0%, rgba(255, 222, 150, 0) 62%);
+  mix-blend-mode: soft-light;
+}
+
+/* Gợn sóng mực khi click — nở ra rồi tan (JS tự gỡ sau 900ms) */
+.desk-ripple {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 2px solid rgba(217, 164, 65, 0.6);
+  box-shadow: 0 0 12px rgba(217, 164, 65, 0.25);
+  pointer-events: none;
+  animation: desk-ripple 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes desk-ripple {
+  from { transform: scale(0.5); opacity: 0.75; }
+  to   { transform: scale(9); opacity: 0; }
+}
+
+/* Nhật trình: cung + quả cầu mặt trời + đồng hồ — góc dưới trái */
+.desk-orbit {
+  position: absolute;
+  left: 30px;
+  bottom: 20px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.desk-clock {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #5A5A50;
+  padding-bottom: 3px;
+}
+/* Hint compositor chỉ bật trên máy có chuột tinh chỉnh — mobile kiệm RAM GPU:
+   không có chuột thì các lớp này hầu như không bao giờ đổi transform,
+   giữ will-change là giữ vài lớp full-screen trong bộ nhớ compositor vô ích */
+@media (hover: hover) and (pointer: fine) {
+  .desk-layer,
+  .desk-sunmoon,
+  .login-tilt-card {
+    will-change: transform;
+  }
+  .desk-cursorlamp {
+    will-change: transform, opacity;
+  }
+}
+
+@media (max-width: 1023px) {
+  /* Mobile/tablet: không có bánh xe tinh chỉnh — thu gọn chi tiết phụ */
+  .desk-orbit { display: none; }
+  .desk-item-pencil { display: none; }
+  .desk-item-book { width: min(34vw, 220px); }
+  .desk-item-coffee { width: min(20vw, 140px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-tilt-card {
+    transform: none !important;
+  }
+  .login-rise,
+  .login-fog,
+  .login-fog-slow {
+    animation: none !important;
+    transform: none !important;
+  }
+  .login-rise {
+    opacity: 1;
+  }
+  /* Flat-lay: khung tĩnh — tắt mọi chuyển động của cảnh */
+  .desk-flutter,
+  .desk-steam path,
+  .desk-dust,
+  .desk-star,
+  .desk-sun-rays,
+  .desk-sun-halo {
+    animation: none !important;
+  }
+}

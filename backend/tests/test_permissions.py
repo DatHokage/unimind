@@ -33,6 +33,19 @@ def test_advisor_sees_only_own_homeroom_students(client, db, make_user, make_adv
     assert resp.status_code == 200
     resp = client.get(f"/homeroom-classes/{foreign_class.id}/students", headers=h_advisor)
     assert resp.status_code == 403
+    # Hồ sơ SV lớp mình / lớp khác (GET /students/{id} — trang chi tiết từ danh sách lớp)
+    resp = client.get(f"/students/{my_student.id}", headers=h_advisor)
+    assert resp.status_code == 200
+    resp = client.get(f"/students/{foreign_student.id}", headers=h_advisor)
+    assert resp.status_code == 403
+
+
+def test_advisor_cannot_list_all_students(client, db, make_user, make_advisor):
+    """GET /students (toàn trường) không cho cố vấn — chỉ phòng đào tạo & giảng viên;
+    cố vấn xem danh sách lớp mình qua GET /homeroom-classes/{id}/students."""
+    advisor = make_advisor(db)
+    h = make_user(db, role="advisor", advisor=advisor)
+    assert client.get("/students", headers=h).status_code == 403
 
 
 def test_advisor_lists_only_own_homeroom_classes(client, db, make_user, make_advisor, make_homeroom):

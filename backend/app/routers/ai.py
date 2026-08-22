@@ -2,8 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.dependencies.auth_dependency import get_current_user, get_target_student, require_role
+from app.dependencies.auth_dependency import (
+    assert_advisor_owns_homeroom,
+    get_current_user,
+    get_target_student,
+    require_role,
+)
 from app.schemas.ai import (
+    ClassOverviewRequest,
+    ClassOverviewResponse,
     CourseAdviceRequest,
     CourseAdviceResponse,
     RegulationChatRequest,
@@ -12,7 +19,12 @@ from app.schemas.ai import (
     StudySummaryRequest,
     StudySummaryResponse,
 )
-from app.services.ai_service import build_study_summary_payload, run_course_advice, run_study_summary
+from app.services.ai_service import (
+    build_study_summary_payload,
+    run_class_overview,
+    run_course_advice,
+    run_study_summary,
+)
 from app.services.rag_service import (
     RagLLMError,
     RagNotAvailableError,
@@ -68,6 +80,22 @@ async def study_summary(
         stats=build_study_summary_payload(db, body.student_id),
         fallback=fallback,
     )
+
+
+@router.post("/class-overview", response_model=ClassOverviewResponse)
+async def class_overview(
+    body: ClassOverviewRequest,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role("advisor")),
+):
+    """AI đánh giá TỔNG QUAN lớp hành chính — CHỈ cố vấn phụ trách lớp đó.
+
+    Payload gửi LLM chỉ là số liệu tổng hợp của cả lớp (không dữ liệu riêng
+    từng sinh viên, không tên/MSSV). Số liệu stats do server tự tính.
+    """
+    assert_advisor_owns_homeroom(db, user, body.class_id)
+    result = await run_class_overview(db, body.class_id)
+    return ClassOverviewResponse(**result)
 
 
 @router.get("/regulation-chat/status")

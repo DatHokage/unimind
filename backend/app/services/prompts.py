@@ -53,3 +53,29 @@ Trả về DUY NHẤT một JSON object đúng cấu trúc (không kèm văn b�
   "warnings": ["<cảnh báo 1>", "..."],
   "suggestions": ["<gợi ý 1>", "..."]
 }}"""
+
+
+def build_class_overview_prompt(data: dict) -> str:
+    return f"""Bạn là chuyên viên học vụ giàu kinh nghiệm, hỗ trợ cố vấn học tập nhìn lại tình hình TỔNG THỂ của một lớp hành chính. Dữ liệu dưới đây là SỐ LIỆU TỔNG HỢP của cả lớp — không có thông tin riêng của bất kỳ sinh viên nào.
+
+DỮ LIỆU:
+{json.dumps(data, ensure_ascii=False, indent=2)}
+
+QUY TẮC BẮT BUỘC:
+1. CHỈ nhận xét ở mức toàn lớp. Tuyệt đối không suy đoán, nêu hay ám chỉ bất kỳ cá nhân sinh viên nào (kể cả bằng cách nói vòng kiểu "một bạn", "nhóm bạn", "sinh viên A").
+2. Chỉ dùng các con số có trong dữ liệu; không tự sinh số liệu mới.
+3. Đây là nhận xét HỖ TRỢ cho cố vấn chủ nhiệm — không phải kết luận chính thức.
+
+YÊU CẦU VỀ NỘI DUNG:
+- "summary": đoạn văn 6-10 câu vẽ bức tranh chung của lớp: quy mô và tỷ lệ đã có điểm, GPA trung bình hệ 4 lẫn hệ 10, khoảng cách điểm cao nhất – thấp nhất cho thấy độ phân hóa, phân bổ mức rủi ro học vụ, khối lượng tín chỉ tích lũy trung bình, xu hướng chung nếu dữ liệu cho thấy.
+- "strengths": 2-4 mục — những gì LỚP làm tốt ĐÁNG GHI NHẬN/KHEN, mỗi mục 1-2 câu có dẫn chứng bằng chính con số trong dữ liệu (GPA trung bình khá, ít nợ môn, nhiều sinh viên đi lên…). Lớp đang khó khăn đến đâu vẫn ghi nhận đúng những điểm tích cực còn có.
+- "weaknesses": 2-4 mục — điểm yếu/rủi ro của LỚP cần lưu ý, mỗi mục 1-2 câu có dẫn chứng số liệu (tổng môn nợ, tỷ lệ sinh viên có nợ môn, số sinh viên điểm giảm mạnh, phần chưa có điểm cần theo dõi), trung thực nhưng mang tính xây dựng.
+- "suggestions": 3-5 mục hoạt động cho CẢ LỚP hoặc công tác chủ nhiệm (buổi tổng kết nhận xét, nhóm kèm cặp, kênh hỗ trợ học tập, khi nào nên phối hợp phòng đào tạo), mỗi mục 1-2 câu cụ thể khả thi — không khuyên chung chung kiểu "quan tâm sinh viên hơn".
+
+Trả về DUY NHẤT một JSON object đúng cấu trúc (không kèm văn bản nào khác):
+{{
+  "summary": "<đoạn văn 6-10 câu>",
+  "strengths": ["<điểm mạnh 1>", "..."],
+  "weaknesses": ["<điểm yếu 1>", "..."],
+  "suggestions": ["<gợi ý 1>", "..."]
+}}"""

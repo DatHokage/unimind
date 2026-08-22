@@ -265,6 +265,44 @@ def test_delete_homeroom_blocked_when_has_students(client, db, make_user, make_h
     assert resp.status_code == 409
 
 
+def test_get_homeroom_detail_ok(client, db, make_user, make_homeroom, make_student, make_major, make_advisor):
+    """GET /homeroom-classes/{id} trả chi tiết lớp + đếm số sinh viên."""
+    advisor = make_advisor(db)
+    major = make_major(db)
+    hc = make_homeroom(db, advisor=advisor)
+    hc.major_id = major.id
+    db.commit()
+    make_student(db, homeroom=hc, major=major)
+    h = make_user(db, role="training_office")
+
+    resp = client.get(f"/homeroom-classes/{hc.id}", headers=h)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == hc.id
+    assert body["name"] == hc.name
+    assert body["student_count"] == 1
+    assert body["advisor_name"] == advisor.name
+    assert body["major_name"] == major.name
+
+
+def test_get_homeroom_detail_404(client, db, make_user):
+    h = make_user(db, role="training_office")
+    assert client.get("/homeroom-classes/9999", headers=h).status_code == 404
+
+
+def test_get_homeroom_detail_advisor_only_own_class(client, db, make_user, make_homeroom, make_advisor):
+    """Advisor xem được lớp mình phụ trách, bị chặn với lớp khác."""
+    own = make_homeroom(db)
+    other = make_homeroom(db)
+    advisor = make_advisor(db)
+    own.advisor_id = advisor.id
+    db.commit()
+    h = make_user(db, role="advisor", advisor=advisor)
+
+    assert client.get(f"/homeroom-classes/{own.id}", headers=h).status_code == 200
+    assert client.get(f"/homeroom-classes/{other.id}", headers=h).status_code == 403
+
+
 # ---------- Course ----------
 
 

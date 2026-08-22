@@ -361,7 +361,7 @@ def seed(db: Session) -> None:
     gdtc1_b, _ = _get_or_create(
         db, CourseClass, {"course_id": courses["GDTC1"].id, "year": 2025, "term": 2},
         lecturer_id=lecturers["DTCGV006"].id, max_size=30, status="closed",
-        schedule=[{"weekday": 5, "start_period": 7, "end_period": 9, "room": "Sân vận động"}],
+        schedule=[{"weekday": 5, "start_period": 7, "end_period": 9, "room": "SVĐ"}],
     )
     gt1_b, _ = _get_or_create(
         db, CourseClass, {"course_id": courses["GT1"].id, "year": 2025, "term": 2},
@@ -400,7 +400,7 @@ def seed(db: Session) -> None:
          "OOP.A — trùng lịch CTDL.A → demo 'trùng lịch' + chưa đạt tiên quyết"),
         ("OOP", "DTCGV002", {"weekday": 6, "start_period": 1, "end_period": 3, "room": "B205"}, 40,
          "OOP.B — DTC004 đang học"),
-        ("GDTC1", "DTCGV006", {"weekday": 5, "start_period": 7, "end_period": 9, "room": "Sân vận động"}, 30,
+        ("GDTC1", "DTCGV006", {"weekday": 5, "start_period": 7, "end_period": 9, "room": "SVĐ"}, 30,
          "GDTC1.A — không tiên quyết"),
         ("GT2", "DTCGV004", {"weekday": 7, "start_period": 1, "end_period": 3, "room": "A201"}, 40,
          "GT2.A — không tiên quyết"),
@@ -419,17 +419,17 @@ def seed(db: Session) -> None:
     enroll_2026 = [
         ("DTC003", [("CSDL", "B202")]),
         ("DTC004", [("CSDL", "B202"), ("OOP", "B205")]),
-        ("DTC005", [("GDTC1", "Sân vận động"), ("GT2", "A201"), ("AV1", "C101")]),
-        ("DTC006", [("GDTC1", "Sân vận động"), ("GT2", "A201"), ("AV1", "C101")]),
-        ("DTC007", [("CTDL", "B201"), ("GDTC1", "Sân vận động"), ("GT2", "A201")]),
-        ("DTC008", [("CTDL", "B201"), ("GDTC1", "Sân vận động"), ("AV1", "C101")]),
+        ("DTC005", [("GDTC1", "SVĐ"), ("GT2", "A201"), ("AV1", "C101")]),
+        ("DTC006", [("GDTC1", "SVĐ"), ("GT2", "A201"), ("AV1", "C101")]),
+        ("DTC007", [("CTDL", "B201"), ("GDTC1", "SVĐ"), ("GT2", "A201")]),
+        ("DTC008", [("CTDL", "B201"), ("GDTC1", "SVĐ"), ("AV1", "C101")]),
         ("DTC009", [("CTDL", "B206"), ("GT2", "A201"), ("AV1", "C101")]),
-        ("DTC010", [("CTDL", "B206"), ("GDTC1", "Sân vận động"), ("GT2", "A201")]),
-        ("DTC011", [("GDTC1", "Sân vận động"), ("GT2", "A201"), ("AV1", "C101")]),
-        ("DTC012", [("GDTC1", "Sân vận động"), ("GT2", "A201"), ("AV1", "C101")]),
-        ("DTC013", [("GDTC1", "Sân vận động"), ("GT2", "A201"), ("AV1", "C101")]),
-        ("DTC014", [("GDTC1", "Sân vận động"), ("GT2", "A201"), ("AV1", "C101")]),
-        ("DTC015", [("GDTC1", "Sân vận động"), ("GT2", "A201"), ("AV1", "C101")]),
+        ("DTC010", [("CTDL", "B206"), ("GDTC1", "SVĐ"), ("GT2", "A201")]),
+        ("DTC011", [("GDTC1", "SVĐ"), ("GT2", "A201"), ("AV1", "C101")]),
+        ("DTC012", [("GDTC1", "SVĐ"), ("GT2", "A201"), ("AV1", "C101")]),
+        ("DTC013", [("GDTC1", "SVĐ"), ("GT2", "A201"), ("AV1", "C101")]),
+        ("DTC014", [("GDTC1", "SVĐ"), ("GT2", "A201"), ("AV1", "C101")]),
+        ("DTC015", [("GDTC1", "SVĐ"), ("GT2", "A201"), ("AV1", "C101")]),
     ]
     for code, picks in enroll_2026:
         for key in picks:

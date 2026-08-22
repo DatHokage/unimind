@@ -60,10 +60,10 @@ export default function AdvisorStudentDetailPage() {
         </Link>
         <span className="mx-1.5">/</span>
         <Link
-          to={profile?.class_id ? `/advisor/classes/${profile.class_id}/students` : "/advisor/results"}
+          to={profile?.class_id ? `/advisor/classes/${profile.class_id}/students` : "/advisor"}
           className="hover:text-primary"
         >
-          {profile?.class_name ?? "Kết quả sinh viên"}
+          {profile?.class_name ?? "Lớp phụ trách"}
         </Link>
         <span className="mx-1.5">/</span>
         <span className="text-primary">{profile?.code}</span>

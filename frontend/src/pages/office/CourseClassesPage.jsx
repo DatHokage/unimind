@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ListFilter, Presentation, Search } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { Card, DataTable, Cell, Spinner, Alert, Button, Pagination } from "../../components/ui";
 import { CourseClassRow } from "../../components/domain/CourseClassRow";
-import { INPUT_CLS, LABEL_CLS, SELECT_CLS } from "../../utils/forms";
+import { INPUT_CLS, INPUT_FILTER_CLS, LABEL_CLS, SELECT_CLS } from "../../utils/forms";
 
 const EMPTY = { course_id: "", lecturer_id: "", term: 1, year: 2026, max_size: 40, status: "open", schedule: [] };
 const EMPTY_FILTERS = { year: "", term: "", status: "", course_id: "", lecturer_id: "" };
@@ -40,18 +40,10 @@ export default function OfficeCourseClassesPage() {
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // Lớp đang chờ xác nhận đóng — bấm lần đầu chỉ hiện xác nhận, chưa đóng ngay
+  const [confirmCloseId, setConfirmCloseId] = useState(null);
   // Tăng dần mỗi lần gọi API — response của request cũ về sau bị bỏ qua
   const reqId = useRef(0);
-
-  // Panel "Quản lý SV": lớp đang mở panel + danh sách đăng ký trong lớp đó
-  const [managed, setManaged] = useState(null);
-  const [managedRows, setManagedRows] = useState([]);
-  const [managedLoading, setManagedLoading] = useState(false);
-  const [confirmEnrollId, setConfirmEnrollId] = useState(null);
-  // Tìm sinh viên để thêm vào lớp
-  const [stuSearch, setStuSearch] = useState("");
-  const [stuResults, setStuResults] = useState([]);
-  const [pickedStudent, setPickedStudent] = useState("");
 
   // Server-side pagination: chỉ tải đúng các bản ghi của trang hiện tại, không filter/slice ở frontend.
   // Trả về true nếu response được áp dụng (false = request cũ bị bỏ qua).
@@ -199,76 +191,6 @@ export default function OfficeCourseClassesPage() {
     }
   };
 
-  // ---- Quản lý sinh viên trong lớp ----
-
-  const loadManagedRows = async (classId) => {
-    const { data } = await api.get(`/course-classes/${classId}/enrollments`);
-    setManagedRows(data);
-  };
-
-  const openManage = async (c) => {
-    setError("");
-    setManaged(c);
-    setManagedRows([]);
-    setStuSearch("");
-    setStuResults([]);
-    setPickedStudent("");
-    setConfirmEnrollId(null);
-    setManagedLoading(true);
-    try {
-      await loadManagedRows(c.id);
-    } catch (err) {
-      setError(errMsg(err));
-    } finally {
-      setManagedLoading(false);
-    }
-  };
-
-  const searchStudents = async () => {
-    setError("");
-    try {
-      const { data } = await api.get("/students", {
-        params: { page: 0, size: 20, ...(stuSearch.trim() ? { search: stuSearch.trim() } : {}) },
-      });
-      setStuResults(data.data);
-    } catch (err) {
-      setError(errMsg(err));
-    }
-  };
-
-  const addStudentToClass = async () => {
-    if (!pickedStudent) return;
-    setError("");
-    setSuccess("");
-    try {
-      await api.post("/enrollments", {
-        course_class_id: managed.id,
-        student_id: Number(pickedStudent),
-      });
-      setSuccess("Đã thêm sinh viên vào lớp");
-      setPickedStudent("");
-      setStuSearch("");
-      setStuResults([]);
-      await Promise.all([loadManagedRows(managed.id), load(page, appliedSearch, applied)]);
-    } catch (err) {
-      setError(errMsg(err));
-    }
-  };
-
-  const removeEnrollment = async (id) => {
-    setError("");
-    setSuccess("");
-    try {
-      await api.delete(`/enrollments/${id}`);
-      setSuccess("Đã xóa sinh viên khỏi lớp");
-      setConfirmEnrollId(null);
-      await Promise.all([loadManagedRows(managed.id), load(page, appliedSearch, applied)]);
-    } catch (err) {
-      setError(errMsg(err));
-      setConfirmEnrollId(null);
-    }
-  };
-
   // ---- Chỉnh lịch học trong form ----
 
   const setSession = (idx, key, value) =>
@@ -325,8 +247,8 @@ export default function OfficeCourseClassesPage() {
           Tìm
         </Button>
         <ListFilter size={15} className="text-secondary ml-2" />
-        <input className={`${INPUT_CLS} w-24`} type="number" placeholder="Năm" value={filters.year} onChange={setF("year")} />
-        <input className={`${INPUT_CLS} w-24`} type="number" placeholder="Kỳ" value={filters.term} onChange={setF("term")} />
+        <input className={`${INPUT_FILTER_CLS} w-16`} type="number" placeholder="Năm" value={filters.year} onChange={setF("year")} />
+        <input className={`${INPUT_FILTER_CLS} w-16`} type="number" placeholder="Kỳ" value={filters.term} onChange={setF("term")} />
         <select className={`${SELECT_CLS} w-36`} value={filters.status} onChange={setF("status")}>
           <option value="">Mọi trạng thái</option>
           <option value="open">Mở đăng ký</option>
@@ -390,11 +312,11 @@ export default function OfficeCourseClassesPage() {
             </div>
             <div>
               <label className={LABEL_CLS}>Kỳ (1–3)</label>
-              <input className={INPUT_CLS} type="number" min="1" max="3" value={form.term} onChange={set("term")} required disabled={!!editing} />
+              <input className={`${INPUT_CLS} w-20`} type="number" min="1" max="3" value={form.term} onChange={set("term")} required disabled={!!editing} />
             </div>
             <div>
               <label className={LABEL_CLS}>Năm</label>
-              <input className={INPUT_CLS} type="number" value={form.year} onChange={set("year")} required disabled={!!editing} />
+              <input className={`${INPUT_CLS} w-20`} type="number" value={form.year} onChange={set("year")} required disabled={!!editing} />
             </div>
             <div>
               <label className={LABEL_CLS}>Sĩ số tối đa</label>
@@ -491,23 +413,41 @@ export default function OfficeCourseClassesPage() {
             <CourseClassRow key={c.id} cls={c} showLecturer stt={stt}>
               <Cell className="text-right">
                 <span className="inline-flex gap-1">
+                  <Link to={`/office/course-classes/${c.id}/students`}>
+                    <Button size="sm" variant="secondary">
+                      Sinh viên
+                    </Button>
+                  </Link>
                   <Button size="sm" variant="secondary" onClick={() => startEdit(c)}>
                     Sửa
                   </Button>
-                  <Button
-                    size="sm"
-                    variant={managed?.id === c.id ? "primary" : "ghost"}
-                    onClick={() => (managed?.id === c.id ? setManaged(null) : openManage(c))}
-                  >
-                    Quản lý SV
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={c.status === "open" ? "danger" : "secondary"}
-                    onClick={() => toggleStatus(c)}
-                  >
-                    {c.status === "open" ? "Đóng lớp" : "Mở lớp"}
-                  </Button>
+                  {c.status === "open" ? (
+                    confirmCloseId === c.id ? (
+                      <span className="inline-flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={() => {
+                            setConfirmCloseId(null);
+                            toggleStatus(c);
+                          }}
+                        >
+                          Chắc chắn đóng
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setConfirmCloseId(null)}>
+                          Hủy
+                        </Button>
+                      </span>
+                    ) : (
+                      <Button size="sm" variant="danger" onClick={() => setConfirmCloseId(c.id)}>
+                        Đóng lớp
+                      </Button>
+                    )
+                  ) : (
+                    <Button size="sm" variant="secondary" onClick={() => toggleStatus(c)}>
+                      Mở lớp
+                    </Button>
+                  )}
                 </span>
               </Cell>
             </CourseClassRow>
@@ -515,103 +455,6 @@ export default function OfficeCourseClassesPage() {
         />
         <Pagination page={page} totalPages={totalPages} onPageChange={goPage} />
       </Card>
-
-      {/* Panel quản lý sinh viên của lớp đang chọn */}
-      {managed && (
-        <Card
-          title={`Sinh viên lớp ${managed.course_code} · HK${managed.term}/${managed.year} (${managed.enrolled_count}/${managed.max_size})`}
-          actions={
-            <Button variant="ghost" size="sm" onClick={() => setManaged(null)}>
-              Đóng
-            </Button>
-          }
-          padded={false}
-        >
-          <div className="p-4 border-b border-border">
-            <div className="flex flex-wrap gap-2">
-              <div className="relative">
-                <Search
-                  size={15}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary pointer-events-none"
-                />
-                <input
-                  className={`${INPUT_CLS} pl-9 w-72 max-w-full`}
-                  placeholder="Tìm theo mã hoặc tên sinh viên…"
-                  value={stuSearch}
-                  onChange={(e) => setStuSearch(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && searchStudents()}
-                />
-              </div>
-              <Button variant="secondary" onClick={searchStudents}>
-                Tìm
-              </Button>
-              <select
-                className={`${SELECT_CLS} w-72 max-w-full`}
-                value={pickedStudent}
-                onChange={(e) => setPickedStudent(e.target.value)}
-              >
-                <option value="">— Chọn sinh viên —</option>
-                {stuResults.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.code} — {s.name}
-                  </option>
-                ))}
-              </select>
-              <Button onClick={addStudentToClass} disabled={!pickedStudent}>
-                Thêm vào lớp
-              </Button>
-            </div>
-            <p className="text-xs text-secondary mt-2">
-              Hệ thống tự kiểm tra sĩ số, điều kiện tiên quyết và trùng lịch khi thêm.
-            </p>
-          </div>
-          {managedLoading ? (
-            <Spinner />
-          ) : (
-            <DataTable
-              columns={[
-                { key: "code", label: "Mã SV" },
-                { key: "name", label: "Họ tên" },
-                { key: "date", label: "Ngày đăng ký" },
-                { key: "action", label: "" },
-              ]}
-              rows={managedRows}
-              sttStart={1}
-              empty={
-                <p className="py-8 text-center text-sm text-secondary">
-                  Chưa có sinh viên nào đăng ký lớp này.
-                </p>
-              }
-              renderRow={(r, _i, stt) => (
-                <tr key={r.id} className="border-b border-border last:border-0 hover:bg-app/60">
-                  {stt}
-                  <td className="px-4 py-3 text-sm font-medium">{r.student_code}</td>
-                  <td className="px-4 py-3 text-sm">{r.student_name}</td>
-                  <td className="px-4 py-3 text-sm num">
-                    {r.enrolled_at ? new Date(r.enrolled_at).toLocaleDateString("vi-VN") : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {confirmEnrollId === r.id ? (
-                      <span className="inline-flex gap-2">
-                        <Button size="sm" variant="danger" onClick={() => removeEnrollment(r.id)}>
-                          Chắc chắn xóa
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setConfirmEnrollId(null)}>
-                          Giữ lại
-                        </Button>
-                      </span>
-                    ) : (
-                      <Button size="sm" variant="danger" onClick={() => setConfirmEnrollId(r.id)}>
-                        Xóa khỏi lớp
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              )}
-            />
-          )}
-        </Card>
-      )}
     </div>
   );
 }

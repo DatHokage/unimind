@@ -118,6 +118,114 @@ def test_study_summary_advisor_permission(client, db, make_user, make_advisor, m
     assert resp.status_code == 403
 
 
+def test_class_overview_advisor_permission(client, db, make_user, make_advisor, make_homeroom, monkeypatch):
+    """Chỉ cố vấn phụ trách lớp được AI đánh giá lớp đó."""
+    from app.routers import ai as ai_router
+
+    async def fake_run(db_, class_id):
+        return {"summary": "ok", "strengths": [], "weaknesses": [], "suggestions": [], "stats": {}, "fallback": False}
+
+    monkeypatch.setattr(ai_router, "run_class_overview", fake_run)
+
+    advisor = make_advisor(db)
+    my_class = make_homeroom(db, advisor=advisor)
+    foreign_class = make_homeroom(db)
+    h = make_user(db, role="advisor", advisor=advisor)
+
+    assert client.post("/ai/class-overview", json={"class_id": my_class.id}, headers=h).status_code == 200
+    assert client.post("/ai/class-overview", json={"class_id": foreign_class.id}, headers=h).status_code == 403
+
+    # training_office / student không được dùng tính năng này
+    h_office = make_user(db, role="training_office")
+    assert client.post("/ai/class-overview", json={"class_id": my_class.id}, headers=h_office).status_code == 403
+
+
+def test_class_overview_sends_only_aggregates(
+    client, db, make_user, make_advisor, make_homeroom, make_student,
+    make_course, make_course_class, make_enrollment, monkeypatch,
+):
+    """Bảo mật tối đa: prompt gửi LLM chỉ gồm số liệu TỔNG HỢP của lớp —
+    không tên/MSSV, không còn dữ liệu từng sinh viên (kể cả mã giả SV-xx)."""
+    from app.services import ai_service
+
+    advisor = make_advisor(db)
+    hc = make_homeroom(db, advisor=advisor)
+    good = make_student(db, homeroom=hc)    # điểm 8.0 → B/3.0
+    weak = make_student(db, homeroom=hc)    # điểm 4.0 → D/1.0, nợ môn
+    cc = make_course_class(db, make_course(db))
+    make_enrollment(db, good, cc, process=8.0, exam=8.0)
+    make_enrollment(db, weak, cc, process=4.0, exam=4.0)
+
+    captured = {}
+
+    async def fake_llm(prompt):
+        captured["prompt"] = prompt
+        return {
+            "summary": "Lớp có nền tảng khá nhưng còn phân hóa.",
+            "strengths": ["GPA trung bình hệ 10 đạt 6.0."],
+            "weaknesses": ["Còn môn nợ trong lớp."],
+            "suggestions": ["Tổ chức buổi tổng kết nhận xét."],
+        }
+
+    monkeypatch.setattr(ai_service, "call_llm_json", fake_llm)
+
+    h = make_user(db, role="advisor", advisor=advisor)
+    resp = client.post("/ai/class-overview", json={"class_id": hc.id}, headers=h)
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # Prompt gửi đi: không danh tính thật, không mã giả từng SV, không mảng cá nhân
+    prompt = captured["prompt"]
+    assert good.name not in prompt and weak.name not in prompt
+    assert good.code not in prompt and weak.code not in prompt
+    assert "SV-01" not in prompt and "SV-02" not in prompt
+    assert '"students"' not in prompt
+
+    # Văn bản AI đi thẳng ra response (không cần map danh tính nữa)
+    assert body["summary"].startswith("Lớp")
+    assert body["strengths"] == ["GPA trung bình hệ 10 đạt 6.0."]
+    assert body["weaknesses"] == ["Còn môn nợ trong lớp."]
+    assert body["suggestions"] == ["Tổ chức buổi tổng kết nhận xét."]
+
+    # Số liệu tổng hợp do server tự tính — không phụ thuộc output AI
+    stats = body["stats"]
+    assert stats["class_size"] == 2
+    assert stats["students_with_grades"] == 2
+    assert stats["students_without_grades"] == 0
+    assert stats["avg_gpa4"] == 2.0   # (3.0 + 1.0)/2
+    assert stats["avg_gpa10"] == 6.0  # (8.0 + 4.0)/2
+    assert stats["risk_counts"]["high"] == 1
+    assert "students" not in stats
+    assert body["fallback"] is False
+
+
+def test_class_overview_fallback_when_no_llm(
+    client, db, make_user, make_advisor, make_homeroom, make_student, monkeypatch
+):
+    """Không có API key nào → fallback=True nhưng vẫn trả đủ số liệu tổng hợp."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "GOOGLE_API_KEY", "")
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "")
+
+    advisor = make_advisor(db)
+    hc = make_homeroom(db, advisor=advisor)
+    make_student(db, homeroom=hc)  # chưa có điểm
+    h = make_user(db, role="advisor", advisor=advisor)
+
+    resp = client.post("/ai/class-overview", json={"class_id": hc.id}, headers=h)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["fallback"] is True
+    assert body["summary"] is None
+    assert body["strengths"] == [] and body["weaknesses"] == []
+    assert body["stats"]["class_size"] == 1
+    assert body["stats"]["students_with_grades"] == 0
+    assert body["stats"]["students_without_grades"] == 1
+    assert body["stats"]["avg_gpa4"] is None
+
+
 def test_course_advice_fallback_when_no_llm(client, db, make_user, make_student, make_course, make_course_class, monkeypatch):
     """Không có API key nào → fallback=True nhưng vẫn trả danh sách lớp eligible."""
     from app.core.config import settings

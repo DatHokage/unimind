@@ -13,14 +13,17 @@ import GradebookPage from "./pages/lecturer/GradebookPage";
 import AdvisorClassesPage from "./pages/advisor/MyClassesPage";
 import AdvisorStudentsPage from "./pages/advisor/StudentsPage";
 import AdvisorStudentDetailPage from "./pages/advisor/StudentDetailPage";
+import AdvisorClassOverviewPage from "./pages/advisor/ClassOverviewPage";
 import OfficeDashboardPage from "./pages/office/DashboardPage";
 import StudentsManagePage from "./pages/office/StudentsPage";
 import LecturersManagePage from "./pages/office/LecturersPage";
 import AdvisorsManagePage from "./pages/office/AdvisorsPage";
 import MajorsManagePage from "./pages/office/MajorsPage";
 import HomeroomsManagePage from "./pages/office/HomeroomsPage";
+import HomeroomStudentsPage from "./pages/office/HomeroomStudentsPage";
 import CoursesManagePage from "./pages/office/CoursesPage";
 import CourseClassesManagePage from "./pages/office/CourseClassesPage";
+import CourseClassStudentsPage from "./pages/office/CourseClassStudentsPage";
 import ExamGradesPage from "./pages/office/ExamGradesPage";
 
 function RequireRole({ roles }) {
@@ -74,9 +77,8 @@ export default function App() {
           <Route path="/advisor" element={<RequireRole roles={["advisor"]} />}>
             <Route element={<MainLayout />}>
               <Route index element={<AdvisorClassesPage />} />
-              {/* Kết quả sinh viên: danh sách toàn trường dạng quản lý (xem + tìm kiếm) */}
-              <Route path="results" element={<AdvisorStudentsPage officeMode />} />
               <Route path="classes/:classId/students" element={<AdvisorStudentsPage />} />
+              <Route path="classes/:classId/overview" element={<AdvisorClassOverviewPage />} />
               <Route path="students/:studentId" element={<AdvisorStudentDetailPage />} />
             </Route>
           </Route>
@@ -89,8 +91,10 @@ export default function App() {
               <Route path="advisors" element={<AdvisorsManagePage />} />
               <Route path="majors" element={<MajorsManagePage />} />
               <Route path="homerooms" element={<HomeroomsManagePage />} />
+              <Route path="homerooms/:classId/students" element={<HomeroomStudentsPage />} />
               <Route path="courses" element={<CoursesManagePage />} />
               <Route path="course-classes" element={<CourseClassesManagePage />} />
+              <Route path="course-classes/:classId/students" element={<CourseClassStudentsPage />} />
               <Route path="exam-grades" element={<ExamGradesPage />} />
             </Route>
           </Route>

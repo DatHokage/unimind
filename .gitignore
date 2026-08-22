@@ -63,3 +63,4 @@ Thumbs.db
 
 # ===== File rác do redirect nhầm trên Windows =====
 nul
+.claude/

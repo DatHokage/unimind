@@ -79,7 +79,6 @@ export const MENU = {
       title: "Cố vấn",
       items: [
         { to: "/advisor", icon: School, label: "Lớp phụ trách", end: true },
-        { to: "/advisor/results", icon: BarChart, label: "Kết quả sinh viên" },
       ],
     },
   ],
