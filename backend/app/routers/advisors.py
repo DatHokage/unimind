@@ -1,21 +1,40 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.database import get_db
 from app.dependencies.auth_dependency import require_role
 from app.models import Advisor, HomeroomClass
-from app.schemas.advisor import AdvisorCreate, AdvisorOut, AdvisorPage, AdvisorUpdate
+from app.schemas.advisor import (
+    AdvisorClassOut,
+    AdvisorCreate,
+    AdvisorOut,
+    AdvisorPage,
+    AdvisorUpdate,
+)
 from app.services.user_service import create_user_account
 
 router = APIRouter(prefix="/advisors", tags=["Cố vấn học tập"])
 
+# Load sẵn lớp phụ trách + ngành của từng cố vấn — tránh N+1 khi build response
+_ADVISOR_LOADS = selectinload(Advisor.advised_classes).joinedload(HomeroomClass.major)
 
-def _advisor_out(db: Session, advisor: Advisor) -> AdvisorOut:
+
+def _advisor_out(advisor: Advisor) -> AdvisorOut:
     return AdvisorOut(
         id=advisor.id,
         code=advisor.code,
         name=advisor.name,
+        dob=advisor.dob,
+        classes=[
+            AdvisorClassOut(
+                id=hc.id,
+                name=hc.name,
+                cohort=hc.cohort,
+                major_name=hc.major.name if hc.major else None,
+            )
+            for hc in sorted(advisor.advised_classes, key=lambda c: c.name)
+        ],
     )
 
 
@@ -38,10 +57,15 @@ def list_advisors(
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     advisors = (
-        db.scalars(stmt.order_by(Advisor.code).offset(page * size).limit(size)).all()
+        db.scalars(
+            stmt.options(_ADVISOR_LOADS)
+            .order_by(Advisor.code)
+            .offset(page * size)
+            .limit(size)
+        ).all()
     )
     return AdvisorPage(
-        data=[_advisor_out(db, a) for a in advisors],
+        data=[_advisor_out(a) for a in advisors],
         page=page,
         size=size,
         totalElements=total,
@@ -55,8 +79,10 @@ def list_all_advisors(
     user: dict = Depends(require_role("training_office")),
 ):
     """Toàn bộ cố vấn (không phân trang) — phục vụ dropdown chọn cố vấn cho lớp hành chính."""
-    advisors = db.scalars(select(Advisor).order_by(Advisor.code)).all()
-    return [_advisor_out(db, a) for a in advisors]
+    advisors = db.scalars(
+        select(Advisor).options(_ADVISOR_LOADS).order_by(Advisor.code)
+    ).all()
+    return [_advisor_out(a) for a in advisors]
 
 
 @router.post("", response_model=AdvisorOut, status_code=201)
@@ -70,6 +96,7 @@ def create_advisor(
     advisor = Advisor(
         code=body.code,
         name=body.name,
+        dob=body.dob,
     )
     db.add(advisor)
     db.flush()
@@ -79,7 +106,7 @@ def create_advisor(
         )
     db.commit()
     db.refresh(advisor)
-    return _advisor_out(db, advisor)
+    return _advisor_out(advisor)
 
 
 @router.get("/{advisor_id}", response_model=AdvisorOut)
@@ -94,7 +121,7 @@ def get_advisor(
     # Cố vấn chỉ xem được hồ sơ của chính mình
     if user["role"] == "advisor" and user.get("advisor_id") != advisor_id:
         raise HTTPException(status_code=403, detail="Không đủ quyền truy cập")
-    return _advisor_out(db, advisor)
+    return _advisor_out(advisor)
 
 
 @router.put("/{advisor_id}", response_model=AdvisorOut)
@@ -115,7 +142,7 @@ def update_advisor(
         setattr(advisor, field, value)
     db.commit()
     db.refresh(advisor)
-    return _advisor_out(db, advisor)
+    return _advisor_out(advisor)
 
 
 @router.delete("/{advisor_id}", status_code=200)

@@ -24,7 +24,6 @@ model là bắt đầu ngữ cảnh mới.
 import logging
 import os
 import sys
-import threading
 from collections import OrderedDict
 from pathlib import Path
 

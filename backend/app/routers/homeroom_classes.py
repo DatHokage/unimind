@@ -6,7 +6,6 @@ from app.core.database import get_db
 from app.dependencies.auth_dependency import (
     advisor_identity,
     assert_advisor_owns_homeroom,
-    get_current_user,
     require_role,
 )
 from app.models import Advisor, HomeroomClass, Major, Student

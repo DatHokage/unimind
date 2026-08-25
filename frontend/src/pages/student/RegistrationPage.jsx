@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, CalendarX, Lightbulb, TriangleAlert } from "lucide-react";
+import { Sparkles, CalendarX, CalendarDays, Lightbulb, TriangleAlert } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { Card, DataTable, Cell, NumCell, Row, Badge, Spinner, Alert, Button } from "../../components/ui";
-import { fmtSchedule, fmtTerm } from "../../utils/format";
+import AiMarkdown from "../../components/ui/AiMarkdown";
+import { fmtSlot } from "../../utils/format";
 
 export default function RegistrationPage() {
   const { user } = useAuth();
@@ -20,10 +21,17 @@ export default function RegistrationPage() {
   const [aiError, setAiError] = useState("");
 
   const load = async () => {
-    const [cc, en] = await Promise.all([
-      api.get("/course-classes/all", { params: { status: "open" } }),
-      api.get(`/enrollments/student/${user.student_id}`),
-    ]);
+    // Chỉ hiện lớp đang mở của kỳ hiện tại (kỳ mới nhất có lớp trong hệ thống).
+    // Enrollments không phụ thuộc current-term → phóng trước để chạy song song,
+    // mỗi lần load chỉ tốn 1 wave round-trip thay vì 2 wave nối tiếp.
+    const enP = api.get(`/enrollments/student/${user.student_id}`);
+    const { data: cur } = await api.get("/course-classes/current-term");
+    const params = { status: "open" };
+    if (cur.year) {
+      params.year = cur.year;
+      params.term = cur.term;
+    }
+    const [cc, en] = await Promise.all([api.get("/course-classes/all", { params }), enP]);
     setClasses(cc.data);
     setMyEnrollmentIds(new Set(en.data.map((e) => e.course_class_id)));
   };
@@ -61,8 +69,8 @@ export default function RegistrationPage() {
     try {
       await api.post("/enrollments", { course_class_id: courseClassId });
       const cls = classes.find((c) => c.id === courseClassId);
-      // §8 — thông báo nhất quán với hành động: "Đã đăng ký học phần ..."
-      setSuccess(`Đã đăng ký học phần ${cls?.course_code ?? courseClassId}`);
+      // §8 — thông báo nhất quán với hành động: "Đã đăng ký lớp ..."
+      setSuccess(`Đã đăng ký lớp ${cls?.code ?? cls?.course_code ?? courseClassId}`);
       await load();
     } catch (e) {
       setError(errMsg(e));
@@ -119,9 +127,9 @@ export default function RegistrationPage() {
                 <h3 className="text-sm font-semibold mb-1.5 inline-flex items-center gap-1.5">
                   <Sparkles size={14} className="text-primary" /> Nhận xét của AI
                 </h3>
-                <p className="text-sm text-secondary whitespace-pre-line leading-relaxed">
-                  {advice.overview}
-                </p>
+                <div className="text-sm text-secondary leading-relaxed">
+                  <AiMarkdown text={advice.overview} />
+                </div>
               </div>
             )}
             {advice.recommendations?.length > 0 && (
@@ -136,12 +144,26 @@ export default function RegistrationPage() {
                         key={r.course_class_id}
                         className="flex items-start justify-between gap-3 bg-primary-soft border border-primary/20 rounded-lg p-3"
                       >
-                        <div>
+                        <div className="min-w-0">
                           <div className="font-medium text-sm">
                             {r.course_code}
                             {cls ? ` — ${cls.course_name}` : ""}
                           </div>
-                          <div className="text-xs text-secondary mt-0.5">{r.reason}</div>
+                          <div className="text-xs text-secondary mt-0.5 leading-relaxed">
+                            <AiMarkdown text={r.reason} />
+                          </div>
+                          {cls && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span
+                                title={`Lịch học cố định trong kỳ · ${fmtSlot(cls)}`}
+                                className="inline-flex items-center gap-1 bg-surface border border-border rounded px-1.5 py-0.5 num"
+                              >
+                                <CalendarDays size={11} className="text-primary" />
+                                {fmtSlot(cls)}
+                              </span>
+                              <span className="text-secondary">{cls.credits} tín chỉ</span>
+                            </div>
+                          )}
                         </div>
                         <Button
                           size="sm"
@@ -158,7 +180,11 @@ export default function RegistrationPage() {
                 </ul>
               </div>
             )}
-            {advice.notes && <p className="text-sm text-secondary italic">{advice.notes}</p>}
+            {advice.notes && (
+              <div className="text-sm text-secondary italic [&>*:last-child]:mb-0">
+                <AiMarkdown text={advice.notes} />
+              </div>
+            )}
             {advice.warnings?.length > 0 && (
               <div className="bg-warning/5 border border-warning/30 rounded-lg p-3.5">
                 <h3 className="text-sm font-semibold mb-1.5 inline-flex items-center gap-1.5 text-warning">
@@ -166,7 +192,7 @@ export default function RegistrationPage() {
                 </h3>
                 <ul className="list-disc pl-5 space-y-1 text-sm text-secondary">
                   {advice.warnings.map((w, i) => (
-                    <li key={i} className="leading-relaxed">{w}</li>
+                    <li key={i} className="leading-relaxed [&>*:last-child]:mb-0"><AiMarkdown text={w} /></li>
                   ))}
                 </ul>
               </div>
@@ -178,7 +204,7 @@ export default function RegistrationPage() {
                 </h3>
                 <ul className="list-disc pl-5 space-y-1 text-sm text-secondary">
                   {advice.suggestions.map((s, i) => (
-                    <li key={i} className="leading-relaxed">{s}</li>
+                    <li key={i} className="leading-relaxed [&>*:last-child]:mb-0"><AiMarkdown text={s} /></li>
                   ))}
                 </ul>
               </div>
@@ -192,7 +218,7 @@ export default function RegistrationPage() {
                   {advice.eligible_classes.map((c) => (
                     <li key={c.class_id} className="text-secondary">
                       <b className="text-primary">{c.course_code}</b> {c.course_name} ({c.credits} tc) —{" "}
-                      {fmtSchedule(c.schedule)} — còn {c.remaining_slots} chỗ
+                      {fmtSlot(c.time_slot ?? {})} — còn {c.remaining_slots} chỗ
                     </li>
                   ))}
                 </ul>
@@ -205,7 +231,7 @@ export default function RegistrationPage() {
       <Card title={`Lớp đang mở (${classes.length})`} padded={false}>
         <DataTable
           columns={[
-            { key: "code", label: "Mã HP" },
+            { key: "code", label: "Mã lớp" },
             { key: "name", label: "Học phần" },
             { key: "credits", label: "TC", align: "right" },
             { key: "lecturer", label: "Giảng viên" },
@@ -231,14 +257,11 @@ export default function RegistrationPage() {
             return (
               <Row key={c.id}>
                 {stt}
-                <Cell className="font-medium">
-                  {c.course_code}
-                  <span className="text-secondary text-xs"> · {fmtTerm(c.year, c.term)}</span>
-                </Cell>
+                <Cell className="font-medium whitespace-nowrap">{c.code}</Cell>
                 <Cell className="whitespace-normal min-w-40">{c.course_name}</Cell>
                 <NumCell>{c.credits}</NumCell>
                 <Cell>{c.lecturer_name ?? "—"}</Cell>
-                <Cell className="text-xs whitespace-normal">{fmtSchedule(c.schedule)}</Cell>
+                <Cell className="text-xs whitespace-normal">{fmtSlot(c)}</Cell>
                 <NumCell>
                   {c.enrolled_count}/{c.max_size}
                   {full && (

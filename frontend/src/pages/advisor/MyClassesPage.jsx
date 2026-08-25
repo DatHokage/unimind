@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { School } from "lucide-react";
 import api, { errMsg } from "../../api/client";
-import { Card, DataTable, Cell, NumCell, Row, Spinner, Alert, Button } from "../../components/ui";
+import { Card, DataTable, Cell, NumCell, Row, Alert, Button, SkeletonListPage } from "../../components/ui";
 
 export default function AdvisorMyClassesPage() {
   const [loading, setLoading] = useState(true);
@@ -17,7 +17,8 @@ export default function AdvisorMyClassesPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <Spinner />;
+  // Skeleton vẽ ngay khi vào route — FCP/LCP không chờ API trả về
+  if (loading) return <SkeletonListPage />;
   if (error) return <Alert kind="error">{error}</Alert>;
 
   return (

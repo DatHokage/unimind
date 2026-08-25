@@ -29,7 +29,7 @@ def test_update_student_fields(client, db, make_user, make_student, make_homeroo
 def test_update_student_duplicate_code_409(client, db, make_user, make_student):
     """Đổi mã SV sang mã đã tồn tại → 409."""
     s1 = make_student(db, code="SV-A")
-    s2 = make_student(db, code="SV-B")
+    make_student(db, code="SV-B")  # chủ nhân mã bị trùng
     h = make_user(db, role="training_office")
 
     resp = client.put(f"/students/{s1.id}", json={"code": "SV-B"}, headers=h)
@@ -104,7 +104,7 @@ def test_update_lecturer_ok(client, db, make_user, make_lecturer):
 
 def test_update_lecturer_duplicate_code_409(client, db, make_user, make_lecturer):
     l1 = make_lecturer(db, code="GV-X")
-    l2 = make_lecturer(db, code="GV-Y")
+    make_lecturer(db, code="GV-Y")  # chủ nhân mã bị trùng
     h = make_user(db, role="training_office")
 
     resp = client.put(f"/lecturers/{l1.id}", json={"code": "GV-Y"}, headers=h)
@@ -208,8 +208,6 @@ def test_delete_major_blocked_when_has_students(client, db, make_user, make_majo
 
 def test_delete_major_blocked_when_has_homerooms(client, db, make_user, make_major, make_homeroom):
     """Lớp hành chính gắn ngành → không cho xóa ngành."""
-    from app.models import HomeroomClass
-
     m = make_major(db)
     hc = make_homeroom(db)
     hc.major_id = m.id

@@ -4,7 +4,7 @@ import { NotebookPen } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { Card, DataTable, Cell, NumCell, Row, Spinner, Alert, Button } from "../../components/ui";
 import { CourseClassRow } from "../../components/domain/CourseClassRow";
-import { fmtTerm, fmtScore } from "../../utils/format";
+import { fmtTerm, fmtScore, fmtSlot } from "../../utils/format";
 
 function ScoreCell({ enrollmentId, initial, onSaved }) {
   const [value, setValue] = useState(initial ?? "");
@@ -91,8 +91,9 @@ function SelectClassScreen() {
       <Card padded={false}>
         <DataTable
           columns={[
-            { key: "code", label: "Mã HP" },
+            { key: "code", label: "Mã lớp" },
             { key: "name", label: "Học phần" },
+            { key: "credits", label: "TC", align: "right" },
             { key: "term", label: "Kỳ" },
             { key: "schedule", label: "Lịch học" },
             { key: "size", label: "Sĩ số", align: "right" },
@@ -185,8 +186,9 @@ function GradebookScreen({ courseClassId }) {
 
       <div>
         <h2 className="text-lg font-semibold">{cls?.course_name}</h2>
-        <p className="text-sm text-secondary mt-0.5 num">
-          {fmtTerm(cls?.year, cls?.term)} · {rows.length} sinh viên
+        <p className="text-sm text-secondary mt-0.5">
+          <span className="num">{cls?.code}</span> · <span className="num">{fmtTerm(cls?.year, cls?.term)}</span> ·{" "}
+          {fmtSlot(cls ?? {})} · <span className="num">{rows.length}</span> sinh viên
         </p>
       </div>
 

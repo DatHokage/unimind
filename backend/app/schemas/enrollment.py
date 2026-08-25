@@ -18,9 +18,13 @@ class EnrollmentOut(BaseModel):
     student_name: str | None = None
     course_class_id: int
     course_code: str | None = None
+    class_code: str | None = None  # mã lớp học phần CTDL-N01
     course_name: str | None = None
     term: int | None = None
     year: int | None = None
-    schedule: list = []
+    # Lịch cố định của lớp (1 buổi/tuần trong 1 khối giờ)
+    weekday: int | None = None
+    block: str | None = None
+    room: str | None = None
     enrolled_at: datetime.datetime
     status: str

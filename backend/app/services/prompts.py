@@ -13,6 +13,8 @@ QUY TẮC BẮT BUỘC (server sẽ kiểm tra lại):
 1. Chỉ được gợi ý các lớp có "eligible": true trong danh sách open_course_classes.
 2. Không bịa lớp, mã môn hay số liệu ngoài dữ liệu được cung cấp.
 3. Xếp thứ tự ưu tiên: môn chưa đạt cần học lại (taken_not_passed) > môn bắt buộc đã đủ tiên quyết > môn tự chọn.
+4. Khi nhắc đến lịch học, quy đổi time_slot sang nhãn tiếng Việt: weekday 2..7 là "Thứ 2".."Thứ 7", weekday 8 là "Chủ nhật"; block morning/afternoon/evening là "sáng"/"chiều"/"tối". Ví dụ time_slot {{weekday: 3, block: "morning"}} → "sáng Thứ 3".
+5. Viết văn thuần KHÔNG định dạng markdown: cấm **in đậm**, gạch đầu dòng bằng *, tiêu đề # — mỗi mục warnings/suggestions là câu văn đơn giản.
 
 YÊU CẦU VỀ CHIỀU SÂU:
 - "overview": đoạn văn 3-5 câu NHẬN XÉT TỔNG QUAN — khái quát tình trạng học tập hiện tại (bao nhiêu môn đã qua, GPA/xu hướng nếu dữ liệu cho thấy), chiến lược đăng ký kỳ này (nên bao nhiêu tín chỉ, ưu tiên điều gì) và những lưu ý lớn.
@@ -45,7 +47,7 @@ YÊU CẦU VỀ CHIỀU SÂU:
 - "warnings": mỗi mục 1-2 câu, DẪN CHỨNG CỤ THỂ (tên môn + điểm số) cho từng rủi ro: môn dưới 5.0 cần cải thiện/học lại, xu hướng điểm đi xuống, kỳ đăng ký quá ít hoặc quá nhiều tín chỉ.
 - "suggestions": 3-6 mục, mỗi mục 1-2 câu, CỤ THỂ và khả thi: ưu tiên học lại môn nào, cách cải thiện phương pháp học cho nhóm môn yếu, số tín chỉ hợp lý kỳ tới, khi nào nên gặp cố vấn học tập. Không dùng lời khuyên chung chung kiểu "học chăm hơn".
 
-Lưu ý: đây là nhận xét hỗ trợ, không thay thế tư vấn chính thức của cố vấn học tập.
+Lưu ý: đây là nhận xét hỗ trợ, không thay thế tư vấn chính thức của cố vấn học tập. Viết văn thuần, KHÔNG dùng định dạng markdown (cấm **in đậm**, gạch đầu dòng, tiêu đề #).
 
 Trả về DUY NHẤT một JSON object đúng cấu trúc (không kèm văn bản nào khác):
 {{
@@ -65,6 +67,7 @@ QUY TẮC BẮT BUỘC:
 1. CHỈ nhận xét ở mức toàn lớp. Tuyệt đối không suy đoán, nêu hay ám chỉ bất kỳ cá nhân sinh viên nào (kể cả bằng cách nói vòng kiểu "một bạn", "nhóm bạn", "sinh viên A").
 2. Chỉ dùng các con số có trong dữ liệu; không tự sinh số liệu mới.
 3. Đây là nhận xét HỖ TRỢ cho cố vấn chủ nhiệm — không phải kết luận chính thức.
+4. Viết văn thuần KHÔNG định dạng markdown: cấm **in đậm**, gạch đầu dòng bằng *, tiêu đề #.
 
 YÊU CẦU VỀ NỘI DUNG:
 - "summary": đoạn văn 6-10 câu vẽ bức tranh chung của lớp: quy mô và tỷ lệ đã có điểm, GPA trung bình hệ 4 lẫn hệ 10, khoảng cách điểm cao nhất – thấp nhất cho thấy độ phân hóa, phân bổ mức rủi ro học vụ, khối lượng tín chỉ tích lũy trung bình, xu hướng chung nếu dữ liệu cho thấy.

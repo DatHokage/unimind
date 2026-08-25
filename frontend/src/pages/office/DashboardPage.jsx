@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import api, { errMsg } from "../../api/client";
-import { Card, DataTable, Cell, NumCell, Row, Badge, Spinner, Alert } from "../../components/ui";
+import { Card, DataTable, Cell, NumCell, Row, Badge, Alert, SkeletonCard } from "../../components/ui";
 
 /** Màu tỷ lệ đạt theo ngưỡng (§2.1): dưới ngưỡng → danger. */
 const passRateTone = (v) => (v == null ? "neutral" : v >= 0.7 ? "success" : v >= 0.5 ? "warning" : "danger");
@@ -26,7 +26,14 @@ export default function OfficeDashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <Spinner />;
+  // Skeleton vẽ ngay khi vào route — FCP/LCP không chờ API trả về
+  if (loading)
+    return (
+      <div className="grid lg:grid-cols-2 gap-6 items-start">
+        <SkeletonCard rows={6} />
+        <SkeletonCard rows={4} />
+      </div>
+    );
   if (error) return <Alert kind="error">{error}</Alert>;
 
   const pct = (v) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);

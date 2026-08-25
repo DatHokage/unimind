@@ -4,6 +4,7 @@ import api, { errMsg } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { Card, Spinner, Alert, StatCard, Badge } from "../../components/ui";
 import { GradeTable } from "../../components/domain/GradeTable";
+import { StudySummaryCard } from "../../components/domain/StudySummaryCard";
 import { classifyGpa4 } from "../../utils/classification";
 
 export default function GradesPage() {
@@ -59,6 +60,7 @@ export default function GradesPage() {
           </div>
         </div>
       </div>
+      <StudySummaryCard studentId={user.student_id} />
       <Card padded={false}>
         <GradeTable
           grades={grades}

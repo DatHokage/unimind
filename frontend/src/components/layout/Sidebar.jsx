@@ -23,8 +23,12 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
           aria-hidden
         />
       )}
+      {/* h-dvh (100dvh) thay vì inset-y-0: trên điện thoại, inset-y-0 lấy chiều cao
+          LAYOUT viewport (đếm cả phần browser bar chiếm chỗ) → footer Đăng xuất/
+          Liên hệ bị đẩy xuống dưới vùng nhìn thấy (mất nút trên mobile, lỗi /office).
+          100dvh bám theo visual viewport nên đáy drawer luôn trên màn hình. */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-surface border-r border-border transition-all duration-200
+        className={`fixed top-0 left-0 z-40 flex flex-col h-dvh bg-surface border-r border-border transition-all duration-200
           ${collapsed ? "md:w-[72px]" : "md:w-[260px]"} w-[260px]
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       >
@@ -43,9 +47,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
           </span>
           {!collapsed && (
             <div className="min-w-0">
-              <div className="text-sm font-medium truncate" title={displayName}>
-                {displayName}
-              </div>
+              <div className="text-sm font-medium truncate">{displayName}</div>
               <Badge tone={ROLE_TONES[user?.role] ?? "neutral"} className="mt-0.5">
                 {ROLE_LABELS[user?.role] ?? user?.role}
               </Badge>
@@ -53,8 +55,11 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
           )}
         </div>
 
-        {/* §5.2 — Menu chia nhóm theo role */}
-        <nav className="flex-1 overflow-y-auto px-3 py-3">
+        {/* §5.2 — Menu chia nhóm theo role.
+            min-h-0 BẮT BUỘC: không có nó thì flex con không co thấp hơn nội dung
+            → sidebar cao hơn màn hình điện thoại, nút Đăng xuất bị đẩy chìm dưới
+            đáy (phải cuộn mới thấy). Có nó thì nav tự cuộn trong, đáy luôn ghim. */}
+        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3">
           {groups.map((group) => (
             <div key={group.title} className="mb-4">
               {!collapsed && (
@@ -76,18 +81,21 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
           ))}
         </nav>
 
-        {/* §5.3 — Đáy sidebar: hỗ trợ + đăng xuất, tách bằng đường border */}
-        <div className="border-t border-border px-3 py-3 space-y-0.5 shrink-0">
+        {/* §5.3 — Đáy sidebar: hỗ trợ + đăng xuất, tách bằng đường border.
+            paddingBottom theo safe-area để không bị vệt home-indicator iPhone che. */}
+        <div
+          className="border-t border-border px-3 py-2 space-y-0.5 shrink-0"
+          style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+        >
           <div
             className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-secondary"
-            title="Liên hệ phòng đào tạo khi cần hỗ trợ"
           >
             <LifeBuoy size={18} className="shrink-0" />
             {!collapsed && <span>Liên hệ phòng đào tạo</span>}
           </div>
           <button
             onClick={logout}
-            title="Đăng xuất"
+            aria-label="Đăng xuất"
             className="w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm text-secondary hover:bg-danger/10 hover:text-danger transition-colors duration-150 cursor-pointer"
           >
             <LogOut size={18} className="shrink-0" />
@@ -102,7 +110,6 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onCloseMobile
             size="sm"
             onClick={onToggle}
             className="w-full"
-            title={collapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
           >
             {collapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
             {!collapsed && "Thu gọn"}

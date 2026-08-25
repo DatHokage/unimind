@@ -5,7 +5,7 @@ import api, { errMsg } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { Card, DataTable, Cell, Row, Badge, Spinner, Alert, Button } from "../../components/ui";
 import { enrollmentStatus } from "../../components/domain/EnrollmentCard";
-import { fmtSchedule, fmtTerm, fmtDate } from "../../utils/format";
+import { fmtSlot, fmtTerm, fmtDate } from "../../utils/format";
 
 export default function MyEnrollmentsPage() {
   const { user } = useAuth();
@@ -52,7 +52,7 @@ export default function MyEnrollmentsPage() {
       <Card padded={false}>
         <DataTable
           columns={[
-            { key: "code", label: "Mã HP" },
+            { key: "code", label: "Mã lớp" },
             { key: "name", label: "Học phần" },
             { key: "term", label: "Kỳ" },
             { key: "schedule", label: "Lịch học" },
@@ -78,10 +78,10 @@ export default function MyEnrollmentsPage() {
             return (
               <Row key={e.id}>
                 {stt}
-                <Cell className="font-medium">{e.course_code}</Cell>
+                <Cell className="font-medium whitespace-nowrap">{e.class_code ?? e.course_code}</Cell>
                 <Cell className="whitespace-normal min-w-40">{e.course_name}</Cell>
                 <Cell>{fmtTerm(e.year, e.term)}</Cell>
-                <Cell className="text-xs whitespace-normal">{fmtSchedule(e.schedule)}</Cell>
+                <Cell className="text-xs whitespace-normal">{fmtSlot(e)}</Cell>
                 <Cell className="text-xs">{fmtDate(e.enrolled_at)}</Cell>
                 <Cell>
                   <Badge tone={st.tone}>{st.label}</Badge>

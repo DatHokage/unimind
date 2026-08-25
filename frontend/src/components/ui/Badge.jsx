@@ -18,11 +18,12 @@ const SOLID = {
   danger: "bg-danger text-white",
 };
 
-export function Badge({ tone = "neutral", solid = false, className = "", children }) {
+export function Badge({ tone = "neutral", solid = false, className = "", children, ...rest }) {
   const palette = solid ? SOLID : SOFT;
   return (
     <span
       className={`inline-flex items-center whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium ${palette[tone] ?? palette.neutral} ${className}`}
+      {...rest}
     >
       {children}
     </span>

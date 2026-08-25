@@ -21,11 +21,12 @@ const HOME_BY_ROLE = {
 };
 
 /**
- * Input bản warm-premium: cao 48px, radius 14px, nền trắng nổi trên card frost,
- * focus viền brand blue (#0095FF) + ring nhẹ. Transition 150ms.
+ * Input bản warm-premium: cao 44px (khớp nút Đăng nhập), radius 12px,
+ * nền trắng nổi trên card frost, focus viền brand blue (#0095FF) + ring nhẹ.
+ * Transition 150ms.
  */
 const INPUT_CLS =
-  "w-full h-[48px] border border-[rgba(46,46,42,0.10)] rounded-[14px] bg-white pl-11 pr-4 text-[14px] text-[#2E2E2A] placeholder:text-[#8C8C82] shadow-[0_2px_6px_-2px_rgba(96,84,62,0.12)] transition-all duration-150 focus:outline-none focus:border-[#0095FF] focus:ring-4 focus:ring-[#0095FF]/15 focus:shadow-[0_6px_18px_-6px_rgba(0,149,255,0.25)]";
+  "w-full h-[44px] border border-[rgba(46,46,42,0.10)] rounded-[12px] bg-white pl-10 pr-4 text-[14px] text-[#2E2E2A] placeholder:text-[#8C8C82] shadow-[0_2px_6px_-2px_rgba(96,84,62,0.12)] transition-all duration-150 focus:outline-none focus:border-[#0095FF] focus:ring-4 focus:ring-[#0095FF]/15 focus:shadow-[0_6px_18px_-6px_rgba(0,149,255,0.25)]";
 const INPUT_ERR_CLS =
   " border-danger/60 focus:border-danger focus:ring-danger/10";
 
@@ -120,18 +121,19 @@ function Brand({ size = "md" }) {
    Lớp 0 — gradient kem-ấm dịu (nền gốc).
    Lớp 1 — cảnh SVG bàn học nhìn từ trên xuống: bánh xe chuột làm thời gian
    trôi 7:00→22:00, chuột tạo parallax + quầng ấm, click gợn sóng mực. */
-const DeskScene = lazy(() => import("../components/three/DeskScene"));
+const DeskScene = lazy(() => import("../components/scene/DeskScene"));
 
 function SceneBackdrop({ reduced }) {
   return (
     <div aria-hidden="true" className="fixed inset-0 overflow-hidden pointer-events-none">
-      {/* Lớp glow trôi chậm (CSS) — nằm dưới cảnh SVG */}
-      <div className="login-fog absolute -left-[10%] -top-[15%] h-[55vh] w-[45vw] rounded-full" />
-      <div className="login-fog login-fog-slow absolute -bottom-[18%] right-[-8%] h-[50vh] w-[40vw] rounded-full" />
       {/* Cảnh bàn học flat-lay (tự chốt 1 khung tĩnh khi reduced motion) */}
       <Suspense fallback={null}>
         <DeskScene reduced={reduced} />
       </Suspense>
+      {/* Lớp glow trôi chậm — đặt TRÊN cảnh: trời (CSS lẫn GL) đặc sẽ chôn
+          fog nếu nằm dưới, hai quầng ấm/lạnh này phải nổi trên nền trời */}
+      <div className="login-fog absolute -left-[10%] -top-[15%] h-[55vh] w-[45vw] rounded-full" />
+      <div className="login-fog login-fog-slow absolute -bottom-[18%] right-[-8%] h-[50vh] w-[40vw] rounded-full" />
       {/* Vignette mềm phủ trên cùng, không làm tối nền */}
       <div className="login-vignette absolute inset-0" />
     </div>
@@ -206,7 +208,9 @@ function LoginForm() {
         )}
       </div>
 
-      <form onSubmit={submit} noValidate className="mt-3 space-y-4">
+      {/* Không dùng space-y: khoảng cách giữa các khối do các slot chiều cao
+          CỐ ĐỊNH tự giữ (16px) — thông báo lỗi hiện/tắt không đổi khoảng nào */}
+      <form onSubmit={submit} noValidate className="mt-3">
         <div>
           <label className="block text-sm font-medium mb-2 text-[#2E2E2A]" htmlFor="username">
             Tên đăng nhập
@@ -229,11 +233,16 @@ function LoginForm() {
               aria-describedby={usernameMissing ? "username-error" : undefined}
             />
           </div>
-          {usernameMissing && (
-            <p id="username-error" className="text-xs text-danger mt-1.5 ml-1">
-              Vui lòng nhập tên đăng nhập.
-            </p>
-          )}
+          {/* Slot lỗi chiều cao CỐ ĐỊNH — thông báo chỉ hiện/tắt bên trong,
+              không bao giờ đẩy form giãn card (cùng cơ chế với slot lỗi API trên đầu);
+              mt-1.5 tách chữ khỏi mép input cho thoáng, nhịp xuống khối Mật khẩu 22px */}
+          <div className="mt-1.5 flex h-4 items-center overflow-hidden whitespace-nowrap text-xs text-danger">
+            {usernameMissing && (
+              <p id="username-error" className="ml-1 truncate">
+                Vui lòng nhập tên đăng nhập.
+              </p>
+            )}
+          </div>
         </div>
 
         <div>
@@ -278,18 +287,23 @@ function LoginForm() {
               {showPass ? <EyeOff size={17} /> : <Eye size={17} />}
             </button>
           </div>
-          {passwordMissing && (
-            <p id="password-error" className="text-xs text-danger mt-1.5 ml-1">
-              Vui lòng nhập mật khẩu.
-            </p>
-          )}
+          {/* Slot lỗi chiều cao CỐ ĐỊNH như ô tên đăng nhập — mt-1.5 tách chữ
+              khỏi mép input thay vì dán sát đáy ô */}
+          <div className="mt-1.5 flex h-4 items-center overflow-hidden whitespace-nowrap text-xs text-danger">
+            {passwordMissing && (
+              <p id="password-error" className="ml-1 truncate">
+                Vui lòng nhập mật khẩu.
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Chưa có luồng tự đặt lại mật khẩu — gợi ý 1 dòng trong slot chiều cao
-            CỐ ĐỊNH: hiện/tắt không làm giãn card hay đẩy nút đăng nhập */}
+            CỐ ĐỊNH: hiện/tắt không làm giãn card hay đẩy nút đăng nhập;
+            mt-2 siết khoảng trống khi slot rỗng để nút không bị hụt hơi */}
         <div
           aria-live="polite"
-          className="mt-4 flex h-5 items-center gap-2 whitespace-nowrap overflow-hidden text-[13px] text-[#5A5A50]"
+          className="mt-2 flex h-5 items-center gap-2 whitespace-nowrap overflow-hidden text-[13px] text-[#5A5A50]"
         >
           {showForgot && (
             <>
@@ -308,8 +322,9 @@ function LoginForm() {
           )}
         </div>
 
-        {/* Nút căn giữa — bọc flex vì nút là inline-flex, mx-auto không tác dụng */}
-        <div className="mt-3 flex justify-center">
+        {/* Nút căn giữa — bọc flex vì nút là inline-flex, mx-auto không tác dụng;
+            mt-4 giữ nút bám sát cụm form thay vì trôi lơ lửng dưới hai slot trống */}
+        <div className="mt-4 flex justify-center">
           <button
             type="submit"
             disabled={loading}
@@ -344,32 +359,47 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="login-root relative min-h-screen overflow-hidden">
-      {/* Nền chuyển động "Bàn học flat-lay": fog CSS → cảnh SVG → vignette */}
+    <div className="login-root relative h-screen overflow-hidden">
+      {/* Nền chuyển động "Bàn học flat-lay": cảnh SVG/WebGL → fog trôi → vignette */}
       <SceneBackdrop reduced={reduce} />
 
-      <div className="relative z-10 min-h-screen flex flex-col lg:flex-row">
+      {/* h-screen khoá đúng 1 màn hình — hết cảnh trang giãn ra tạo thanh cuộn dọc */}
+      <div className="relative z-10 flex h-full min-h-0 flex-col lg:flex-row">
         {/* ===== Cột trái: giới thiệu hệ thống — ẩn dưới 1024px ===== */}
-        <div className="hidden lg:flex w-[50%] shrink-0 flex-col px-14 pb-12 pt-4">
+        <div className="hidden lg:flex w-[50%] shrink-0 flex-col px-14 pb-8 pt-4">
           {/* Logo neo góc trên trái — tiêu đề lên ngay vùng cũ của quyển sách */}
           <div className="login-rise" style={{ animationDelay: "0.05s" }}>
             <Brand />
           </div>
 
-          <div className="login-rise mt-[8vh] max-w-[560px]" style={{ animationDelay: "0.15s" }}>
-            {/* Ba cấp chữ: dòng dẫn xám → dòng chính ink → dòng nhấn brand blue.
-                Tối giản tuyệt đối để cảnh nền lên tiếng. */}
+          {/* Khối chữ neo CAO (mt nhỏ): cụm cà phê + sách chiếm góc dưới trái từ
+              ~60vh xuống, hạ khối chữ sâu dễ đè lên tĩnh vật trên màn thấp */}
+          <div className="login-rise mt-[3vh] max-w-[560px]" style={{ animationDelay: "0.15s" }}>
+            {/* Tháp ba dòng — mỗi dòng một cụm từ trọn vẹn: ngắn / dài / ngắn,
+                dòng xanh "Thông minh" đứng riêng được nhấn tối đa. Cỡ chữ clamp để
+                dòng dài nhất không bao giờ xuống dòng lệch khối ở vùng màn
+                1024–1280px; leading 1.18 chừa chỗ cho dấu chồng tiếng Việt
+                (ô, ế, ỗ…). Mọi màu đi qua biến nên đêm về tự đổi tông ánh trăng;
+                --blueline-strong là sắc xanh đậm hơn cho chữ lớn đủ tương phản AA. */}
+            <span
+              aria-hidden="true"
+              className="mb-5 block h-[3px] w-10 rounded-full"
+              style={{ background: "linear-gradient(90deg, var(--blueline), transparent)" }}
+            />
             <h1>
-              <span className="night-shade block text-[22px] font-medium leading-snug text-[var(--eyebrow)]">
-                Nền tảng quản lý đào tạo
+              <span className="night-shade block text-[clamp(34px,3.5vw,54px)] font-bold leading-[1.18] tracking-tight text-[var(--inkline)]">
+                Hệ thống
               </span>
-              <span className="night-shade mt-3 block text-[54px] font-bold leading-[1.08] tracking-tight text-[var(--inkline)]">
-                Gọn trong
+              <span className="night-shade block text-[clamp(34px,3.5vw,54px)] font-bold leading-[1.18] tracking-tight text-[var(--inkline)]">
+                Quản lý Đào tạo
               </span>
-              <span className="night-shade block text-[54px] font-bold leading-[1.08] tracking-tight text-[var(--blueline)]">
-                một hệ thống
+              <span className="night-shade block text-[clamp(34px,3.5vw,54px)] font-bold leading-[1.18] tracking-tight text-[var(--blueline-strong)]">
+                Thông minh
               </span>
             </h1>
+            <p className="night-shade mt-6 max-w-[430px] text-[15px] leading-relaxed text-[var(--eyebrow)]">
+              Vận hành nhẹ nhàng hơn. Đào tạo hiệu quả hơn.
+            </p>
           </div>
         </div>
 
@@ -380,7 +410,7 @@ export default function LoginPage() {
             <Brand size="sm" />
           </div>
 
-          <div className="flex-1 flex items-center justify-center px-4 py-10">
+          <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-5">
             {/* 3 lớp: perspective (tilt) → login-rise (entrance) → card (nghiêng theo con trỏ).
                 Animation CSS đè inline transform nên tilt phải nằm trên element riêng. */}
             <div
@@ -388,12 +418,12 @@ export default function LoginPage() {
               className="flex w-full justify-center [perspective:1100px]"
             >
               <div
-                className="login-rise w-full max-w-[420px]"
+                className="login-rise w-full max-w-[384px]"
                 style={{ animationDelay: "0.12s" }}
               >
                 <div
                   ref={cardRef}
-                  className="login-tilt-card rounded-[24px] border border-white/70 bg-white/85 shadow-[0_30px_72px_-26px_rgba(96,84,62,0.30)] backdrop-blur-md sm:backdrop-blur-xl px-7 py-8 sm:px-9 sm:py-9"
+                  className="login-tilt-card rounded-[22px] border border-white/70 bg-white/85 shadow-[0_30px_72px_-26px_rgba(96,84,62,0.30)] backdrop-blur-md sm:backdrop-blur-xl px-6 py-6 sm:px-8 sm:py-7"
                 >
                   <LoginForm />
                 </div>
@@ -402,8 +432,8 @@ export default function LoginPage() {
           </div>
 
           {/* Footer cột phải — căn giữa dưới card, hiện ở mọi kích thước màn hình */}
-          <p className="pb-6 text-xs text-[#8C8C82] text-center">
-            © 2026 UniMind — Hệ thống quản lý đào tạo tích hợp AI.
+          <p className="shrink-0 pb-4 text-xs text-[#8C8C82] text-center">
+            © 2026 UniMind — Hệ thống quản lý đào tạo thông minh.
           </p>
         </div>
       </div>

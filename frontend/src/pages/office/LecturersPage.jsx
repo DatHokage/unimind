@@ -4,8 +4,9 @@ import { ListFilter, Search, User } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { Card, DataTable, Cell, Row, Badge, Spinner, Alert, Button, Pagination } from "../../components/ui";
 import { INPUT_CLS, LABEL_CLS, SELECT_CLS } from "../../utils/forms";
+import { fmtDate } from "../../utils/format";
 
-const EMPTY = { code: "", name: "", department: "", account: "", password: "" };
+const EMPTY = { code: "", name: "", dob: "", degree: "", department: "", account: "", password: "" };
 const PAGE_SIZE = 10;
 
 export default function OfficeLecturersPage() {
@@ -101,6 +102,8 @@ export default function OfficeLecturersPage() {
     setForm({
       code: l.code,
       name: l.name,
+      dob: l.dob ?? "",
+      degree: l.degree ?? "",
       department: l.department ?? "",
       account: "",
       password: "",
@@ -130,6 +133,8 @@ export default function OfficeLecturersPage() {
     const body = {
       code: form.code.trim(),
       name: form.name.trim(),
+      dob: form.dob || null,
+      degree: form.degree.trim() || null,
       department: form.department.trim() || null,
     };
     try {
@@ -216,6 +221,26 @@ export default function OfficeLecturersPage() {
               <input className={INPUT_CLS} value={form.name} onChange={set("name")} required />
             </div>
             <div>
+              <label className={LABEL_CLS}>Ngày sinh</label>
+              <input className={INPUT_CLS} type="date" value={form.dob} onChange={set("dob")} />
+            </div>
+            <div>
+              <label className={LABEL_CLS}>Học vị</label>
+              <input
+                className={INPUT_CLS}
+                placeholder="VD: ThS, TS, PGS.TS…"
+                list="degree-suggestions"
+                value={form.degree}
+                onChange={set("degree")}
+              />
+              <datalist id="degree-suggestions">
+                <option value="ThS" />
+                <option value="TS" />
+                <option value="PGS.TS" />
+                <option value="GS.TS" />
+              </datalist>
+            </div>
+            <div>
               <label className={LABEL_CLS}>Khoa / Bộ môn</label>
               <input className={INPUT_CLS} value={form.department} onChange={set("department")} />
             </div>
@@ -243,6 +268,8 @@ export default function OfficeLecturersPage() {
           columns={[
             { key: "code", label: "Mã GV" },
             { key: "name", label: "Họ tên" },
+            { key: "dob", label: "Ngày sinh" },
+            { key: "degree", label: "Học vị" },
             { key: "department", label: "Khoa / Bộ môn" },
             { key: "action", label: "" },
           ]}
@@ -266,6 +293,8 @@ export default function OfficeLecturersPage() {
               {stt}
               <Cell className="font-medium">{l.code}</Cell>
               <Cell>{l.name}</Cell>
+              <Cell className="num">{fmtDate(l.dob)}</Cell>
+              <Cell>{l.degree ? <Badge tone="neutral">{l.degree}</Badge> : "—"}</Cell>
               <Cell>
                 {l.department ? <Badge tone="info">{l.department}</Badge> : "—"}
               </Cell>

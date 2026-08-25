@@ -49,6 +49,8 @@ class Lecturer(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    dob: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    degree: Mapped[str | None] = mapped_column(String(50), nullable=True)
     department: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     course_classes: Mapped[list["CourseClass"]] = relationship(back_populates="lecturer")
@@ -69,6 +71,7 @@ class Advisor(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    dob: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
 
     advised_classes: Mapped[list["HomeroomClass"]] = relationship(back_populates="advisor")
 

@@ -13,7 +13,21 @@ from sqlalchemy.pool import StaticPool
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password
 from app.main import app
-from app.models import Advisor, Base, Course, CourseClass, Enrollment, Grade, HomeroomClass, Lecturer, Major, Student, User
+from app.models import (
+    AcademicTerm,
+    Advisor,
+    Base,
+    Course,
+    CourseClass,
+    CourseClassSession,
+    Enrollment,
+    Grade,
+    HomeroomClass,
+    Lecturer,
+    Major,
+    Student,
+    User,
+)
 from app.services.grade_service import recalculate_total
 
 
@@ -166,18 +180,19 @@ def _make_course(db, code=None, prereqs: list[Course] | None = None, credits=3,
     return course
 
 
-def _make_course_class(db, course, lecturer=None, schedule=None, max_size=40,
-                       year=2026, term=1, status="open") -> CourseClass:
+def _make_course_class(db, course, lecturer=None, weekday=2, block="morning", room="A1",
+                       max_size=40, year=2026, term=1, status="open") -> CourseClass:
+    """Lịch cố định: 1 buổi/tuần trong khối giờ chuẩn, phòng không đổi suốt khóa."""
     cc = CourseClass(
         course_id=course.id,
         lecturer_id=lecturer.id if lecturer else None,
         term=term,
         year=year,
         max_size=max_size,
-        schedule=schedule if schedule is not None else [
-            {"weekday": 2, "start_period": 1, "end_period": 3, "room": "A1"}
-        ],
         status=status,
+        weekday=weekday,
+        block=block,
+        room=room,
     )
     db.add(cc)
     db.commit()
@@ -201,6 +216,31 @@ def _make_enrollment(db, student, course_class, process=None, exam=None) -> Enro
         db.add(grade)
         db.commit()
     return e
+
+
+def _make_term(db, year=2026, term=1, start_date=datetime.date(2026, 8, 24)) -> AcademicTerm:
+    """Học kỳ + ngày bắt đầu — gốc quy đổi lịch ra ngày cụ thể."""
+    at = AcademicTerm(year=year, term=term, start_date=start_date)
+    db.add(at)
+    db.commit()
+    db.refresh(at)
+    return at
+
+
+def _make_session_override(db, course_class, seq, action="moved", weekday=None,
+                           block=None, room=None) -> CourseClassSession:
+    ov = CourseClassSession(
+        course_class_id=course_class.id,
+        seq=seq,
+        action=action,
+        weekday=weekday,
+        block=block,
+        room=room,
+    )
+    db.add(ov)
+    db.commit()
+    db.refresh(ov)
+    return ov
 
 
 # ---------- pytest fixtures wrapping factories ----------
@@ -248,3 +288,13 @@ def make_course_class():
 @pytest.fixture()
 def make_enrollment():
     return _make_enrollment
+
+
+@pytest.fixture()
+def make_term():
+    return _make_term
+
+
+@pytest.fixture()
+def make_session_override():
+    return _make_session_override

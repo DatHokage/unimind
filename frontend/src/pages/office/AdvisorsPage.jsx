@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Search, User } from "lucide-react";
 import api, { errMsg } from "../../api/client";
-import { Card, DataTable, Cell, Row, Spinner, Alert, Button, Pagination } from "../../components/ui";
+import { Badge, Card, DataTable, Cell, Row, Spinner, Alert, Button, Pagination } from "../../components/ui";
 import { INPUT_CLS, LABEL_CLS } from "../../utils/forms";
+import { fmtDate } from "../../utils/format";
 
-const EMPTY = { code: "", name: "", account: "", password: "" };
+const EMPTY = { code: "", name: "", dob: "", account: "", password: "" };
 const PAGE_SIZE = 10;
 
 /**
@@ -89,7 +90,7 @@ export default function OfficeAdvisorsPage() {
   const startEdit = (a) => {
     setError("");
     setEditing(a);
-    setForm({ code: a.code, name: a.name, account: "", password: "" });
+    setForm({ code: a.code, name: a.name, dob: a.dob ?? "", account: "", password: "" });
     setShowForm(true);
     setConfirmId(null);
   };
@@ -112,7 +113,7 @@ export default function OfficeAdvisorsPage() {
     e.preventDefault();
     setError("");
     setSuccess("");
-    const body = { code: form.code.trim(), name: form.name.trim() };
+    const body = { code: form.code.trim(), name: form.name.trim(), dob: form.dob || null };
     try {
       if (editing) {
         await api.put(`/advisors/${editing.id}`, body);
@@ -189,6 +190,10 @@ export default function OfficeAdvisorsPage() {
               <label className={LABEL_CLS}>Họ tên</label>
               <input className={INPUT_CLS} value={form.name} onChange={set("name")} required />
             </div>
+            <div>
+              <label className={LABEL_CLS}>Ngày sinh</label>
+              <input className={INPUT_CLS} type="date" value={form.dob} onChange={set("dob")} />
+            </div>
             {!editing && (
               <>
                 <div>
@@ -213,6 +218,8 @@ export default function OfficeAdvisorsPage() {
           columns={[
             { key: "code", label: "Mã CV" },
             { key: "name", label: "Họ tên" },
+            { key: "dob", label: "Ngày sinh" },
+            { key: "classes", label: "Lớp phụ trách" },
             { key: "action", label: "" },
           ]}
           rows={advisors}
@@ -235,6 +242,24 @@ export default function OfficeAdvisorsPage() {
               {stt}
               <Cell className="font-medium">{a.code}</Cell>
               <Cell>{a.name}</Cell>
+              <Cell className="num">{fmtDate(a.dob)}</Cell>
+              <Cell>
+                {a.classes?.length ? (
+                  <span className="flex flex-wrap gap-1 max-w-md">
+                    {a.classes.map((c) => (
+                      <Badge
+                        key={c.id}
+                        tone="info"
+                        title={[c.major_name, c.cohort ? `Khóa ${c.cohort}` : null].filter(Boolean).join(" · ") || undefined}
+                      >
+                        {c.name}
+                      </Badge>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="text-secondary">—</span>
+                )}
+              </Cell>
               <Cell className="text-right">
                 {confirmId === a.id ? (
                   <span className="inline-flex gap-2">

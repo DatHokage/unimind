@@ -11,8 +11,11 @@ from app.schemas.course import CourseBrief, CourseCreate, CourseOut
 from app.schemas.course_class import (
     CourseClassCreate,
     CourseClassOut,
+    CourseClassPage,
     CourseClassUpdate,
-    ScheduleSession,
+    CurrentTermOut,
+    SessionOverrideOut,
+    SessionOverrideSet,
 )
 from app.schemas.enrollment import EnrollmentCreate, EnrollmentOut
 from app.schemas.grade import GradeOut, ScoreUpdate, StudentGradeOut

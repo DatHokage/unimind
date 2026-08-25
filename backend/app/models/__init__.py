@@ -1,6 +1,8 @@
 from app.models.academic import (
+    AcademicTerm,
     Course,
     CourseClass,
+    CourseClassSession,
     Enrollment,
     Grade,
     HomeroomClass,
@@ -19,10 +21,12 @@ __all__ = [
     "Student",
     "Lecturer",
     "Advisor",
+    "AcademicTerm",
     "HomeroomClass",
     "Course",
     "Prerequisite",
     "CourseClass",
+    "CourseClassSession",
     "Enrollment",
     "Grade",
 ]

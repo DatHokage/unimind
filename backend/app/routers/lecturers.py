@@ -65,7 +65,13 @@ def create_lecturer(
 ):
     if db.scalar(select(Lecturer).where(Lecturer.code == body.code)):
         raise HTTPException(status_code=409, detail="Mã giảng viên đã tồn tại")
-    lecturer = Lecturer(code=body.code, name=body.name, department=body.department)
+    lecturer = Lecturer(
+        code=body.code,
+        name=body.name,
+        dob=body.dob,
+        degree=body.degree,
+        department=body.department,
+    )
     db.add(lecturer)
     db.flush()
     if body.account:

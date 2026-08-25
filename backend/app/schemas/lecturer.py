@@ -1,3 +1,5 @@
+import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.student import AccountCreate
@@ -11,6 +13,8 @@ class LecturerAccountCreate(AccountCreate):
 class LecturerCreate(BaseModel):
     code: str = Field(min_length=1, max_length=20)
     name: str = Field(min_length=1, max_length=200)
+    dob: datetime.date | None = None
+    degree: str | None = Field(default=None, max_length=50)
     department: str | None = None
     account: LecturerAccountCreate | None = None
 
@@ -18,6 +22,8 @@ class LecturerCreate(BaseModel):
 class LecturerUpdate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=20)
     name: str | None = None
+    dob: datetime.date | None = None
+    degree: str | None = Field(default=None, max_length=50)
     department: str | None = None
 
 
@@ -27,6 +33,8 @@ class LecturerOut(BaseModel):
     id: int
     code: str
     name: str
+    dob: datetime.date | None = None
+    degree: str | None = None
     department: str | None = None
 
 

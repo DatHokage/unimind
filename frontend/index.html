@@ -4,14 +4,22 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- §2.2 — Font chính: Inter (fallback Be Vietnam Pro nếu đã cài trên máy) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
+    <!-- Font Inter tự host qua @fontsource/inter (import trong src/index.css) —
+         không còn stylesheet render-blocking từ fonts.googleapis.com -->
+    <!-- SEO -->
+    <meta
+      name="description"
+      content="UniMind — hệ thống quản lý đào tạo: đăng ký học phần, thời khóa biểu, điểm số và cố vấn học tập cho sinh viên, giảng viên và phòng đào tạo."
     />
-    <title>UniMind</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="UniMind – Hệ thống Quản lý Đào tạo" />
+    <meta
+      property="og:description"
+      content="Đăng ký học phần, thời khóa biểu, điểm số và cố vấn học tập trong một nền tảng duy nhất."
+    />
+    <meta property="og:locale" content="vi_VN" />
+    <meta name="theme-color" content="#0095FF" />
+    <title>UniMind – Hệ thống Quản lý Đào tạo</title>
   </head>
   <body>
     <div id="root"></div>

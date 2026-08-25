@@ -8,10 +8,14 @@ Cấu trúc seed (đủ số lượng để demo phân trang/tìm kiếm trên w
   - 3 ngành · 6 giảng viên (DTCGV001..006) · 4 cố vấn (DTCCV001..004)
   - 4 lớp hành chính · 15 sinh viên (DTC001..DTC015) · 15 học phần
   - Tiên quyết: TH1 → CTDL → OOP · TH1 → CSDL
-  - 2025-T1: TH1.A (đóng, có điểm 10 SV)
-  - 2025-T2: CTDL.B / GDTC1.B / GT1.B (đóng, có điểm)
-  - 2026-T1: 8 lớp đang mở (CTDL×2, CSDL max_size=2, OOP×2, GDTC1, GT2, AV1)
-    phục vụ demo đăng ký; DTC003+DTC004 chiếm đủ chỗ CSDL.A, DTC004 học OOP.B.
+  - Timeline gắn thời gian hiện tại (kỳ mở = 2026-T1 — trước khai giảng HK1):
+    · 2025-T2 (xuân 2026): TH1-N01 — COMPLETED, có điểm 10 SV
+    · 2025-T3 (hè 2026): CTDL-N01 / GDTC1-N01 / GT1-N01 — COMPLETED, có điểm
+    · 2026-T1 (hiện tại): 8 lớp OPEN (CTDL×2, CSDL max_size=2, OOP×2, GDTC1, GT2, AV1)
+      phục vụ demo đăng ký; DTC003+DTC004 chiếm đủ chỗ CSDL-N01, DTC004 học OOP-N02.
+  - Mã lớp sinh theo THỨ TỰ TẠO trong (môn, kỳ): tạo trước = N01… (không lưu cột).
+  - Lịch cố định mỗi lớp: 1 buổi/tuần × (credits×3) tuần trong 1 khối giờ chuẩn
+    (morning=tiết 1–5, afternoon=6–10, evening=11–15), cùng 1 phòng suốt khóa.
 
 Sinh viên demo chính (các dữ liệu khác được thiết kế để KHÔNG làm lệch số liệu):
   - DTC001 (student1): TH1 7.5 (B) → đăng ký được CTDL/CSDL
@@ -34,8 +38,10 @@ from app.core.security import hash_password
 from app.models import Base
 from app.models import (
     Advisor,
+    AcademicTerm,
     Course,
     CourseClass,
+    CourseClassSession,
     Enrollment,
     Grade,
     HomeroomClass,
@@ -58,22 +64,22 @@ MAJORS = [
 ]
 
 LECTURERS = [
-    # (mã, tên, khoa, tài khoản hoặc None) — tài khoản đăng nhập = mã giảng viên (DTCGV00x)
-    ("DTCGV001", "Nguyễn Văn An", "CNTT", "DTCGV001"),
-    ("DTCGV002", "Trần Thị Bình", "CNTT", "DTCGV002"),
-    ("DTCGV003", "Lê Minh Châu", "CNTT", None),
-    ("DTCGV004", "Phạm Quốc Dũng", "Toán", None),
-    ("DTCGV005", "Hoàng Hải Hà", "Ngoại ngữ", None),
-    ("DTCGV006", "Vũ Thanh Tùng", "Giáo dục thể chất", None),
+    # (mã, tên, ngày sinh, học vị, khoa, tài khoản hoặc None) — tài khoản đăng nhập = mã giảng viên (DTCGV00x)
+    ("DTCGV001", "Nguyễn Văn An", datetime.date(1980, 4, 12), "TS", "CNTT", "DTCGV001"),
+    ("DTCGV002", "Trần Thị Bình", datetime.date(1985, 9, 25), "ThS", "CNTT", "DTCGV002"),
+    ("DTCGV003", "Lê Minh Châu", datetime.date(1978, 1, 30), "PGS.TS", "CNTT", None),
+    ("DTCGV004", "Phạm Quốc Dũng", datetime.date(1983, 6, 18), "TS", "Toán", None),
+    ("DTCGV005", "Hoàng Hải Hà", datetime.date(1990, 11, 5), "ThS", "Ngoại ngữ", None),
+    ("DTCGV006", "Vũ Thanh Tùng", datetime.date(1988, 2, 14), "ThS", "Giáo dục thể chất", None),
 ]
 
 ADVISORS = [
-    # (mã, tên, tài khoản) — cố vấn học tập là hồ sơ RIÊNG (bảng advisor),
-    # không phải giảng viên; tài khoản = mã, role "advisor"
-    ("DTCCV001", "Ngô Thị Lan", "DTCCV001"),
-    ("DTCCV002", "Đinh Công Sơn", "DTCCV002"),
-    ("DTCCV003", "Bùi Thị Huế", "DTCCV003"),
-    ("DTCCV004", "Hồ Anh Tuấn", "DTCCV004"),  # không phụ trách lớp nào — demo /mine rỗng
+    # (mã, tên, ngày sinh, tài khoản) — cố vấn học tập là hồ sơ RIÊNG (bảng advisor),
+    # không phải giảng viên; tài khoản = mã, role "advisor"; cố vấn không cần học vị
+    ("DTCCV001", "Ngô Thị Lan", datetime.date(1986, 3, 20), "DTCCV001"),
+    ("DTCCV002", "Đinh Công Sơn", datetime.date(1984, 7, 9), "DTCCV002"),
+    ("DTCCV003", "Bùi Thị Huế", datetime.date(1991, 10, 17), "DTCCV003"),
+    ("DTCCV004", "Hồ Anh Tuấn", datetime.date(1989, 5, 23), "DTCCV004"),  # không phụ trách lớp nào — demo /mine rỗng
 ]
 
 HOMEROOMS = [
@@ -126,6 +132,14 @@ PREREQUISITES = [
     ("CTDL", "TH1"),
     ("OOP", "CTDL"),
     ("CSDL", "TH1"),
+]
+
+TERMS = [
+    # (năm, kỳ, ngày bắt đầu — nên là Thứ 2 của tuần 1) — gốc quy đổi lịch ra
+    # ngày cụ thể (TKB theo tháng / đánh số tuần). 2026-T1 bắt đầu đúng hôm nay.
+    (2025, 2, datetime.date(2026, 1, 5)),   # xuân 2026
+    (2025, 3, datetime.date(2026, 6, 1)),   # hè 2026
+    (2026, 1, datetime.date(2026, 8, 24)),  # hiện tại
 ]
 
 
@@ -187,19 +201,24 @@ def _enroll_with_grade(
 
 
 def _get_or_create_class(
-    db: Session, course: Course, lecturer: Lecturer, sched: dict, max_size: int,
+    db: Session, course: Course, lecturer: Lecturer, *,
+    weekday: int, block: str, room: str | None, max_size: int,
     year: int = 2026, term: int = 1,
 ) -> CourseClass:
-    """Lớp học phần định danh bằng (học phần, kỳ, PHÒNG) — cùng 1 học phần mở
-    nhiều lớp trong 1 kỳ (CTDL.A/CTDL.B...) nên không thể chỉ khóa theo kỳ."""
-    for cc in db.scalars(
-        select(CourseClass).filter_by(course_id=course.id, year=year, term=term)
-    ).all():
-        if any(s.get("room") == sched["room"] for s in (cc.schedule or [])):
-            return cc
+    """Lớp học phần định danh bằng (môn, kỳ, thứ, khối, PHÒNG) — cùng 1 học phần
+    mở nhiều lớp trong 1 kỳ nên phải khóa thêm lịch; phòng duy nhất trong kỳ."""
+    cc = db.scalar(
+        select(CourseClass).filter_by(
+            course_id=course.id, year=year, term=term,
+            weekday=weekday, block=block, room=room,
+        )
+    )
+    if cc:
+        return cc
     cc = CourseClass(
         course_id=course.id, lecturer_id=lecturer.id, year=year, term=term,
-        max_size=max_size, status="open", schedule=[sched],
+        max_size=max_size, status="open",
+        weekday=weekday, block=block, room=room,
     )
     db.add(cc)
     db.flush()
@@ -231,10 +250,24 @@ def seed(db: Session) -> None:
     for code, name in MAJORS:
         majors[code], _ = _get_or_create(db, Major, {"code": code}, name=name)
 
+    # --- Học kỳ + ngày bắt đầu (gốc tính ngày buổi học cho TKB tháng/tuần) ---
+    # Kỳ đã tồn tại thì giữ nguyên start_date (PĐT có thể đã sửa tay trong app)
+    for year, term, start_date in TERMS:
+        _get_or_create(db, AcademicTerm, {"year": year, "term": term}, start_date=start_date)
+
     # --- Giảng viên ---
     lecturers = {}
-    for code, name, department, username in LECTURERS:
-        gv, _ = _get_or_create(db, Lecturer, {"code": code}, name=name, department=department)
+    for code, name, dob, degree, department, username in LECTURERS:
+        gv, _ = _get_or_create(
+            db, Lecturer, {"code": code},
+            name=name, dob=dob, degree=degree, department=department,
+        )
+        # DB cũ tạo trước khi có 2 trường này: chỉ lấp chỗ còn trống, không
+        # ghi đè thông tin đã được sửa tay trong app
+        if gv.dob is None:
+            gv.dob = dob
+        if gv.degree is None:
+            gv.degree = degree
         lecturers[code] = gv
         # Tài khoản giảng viên = MÃ (DTCGV00x): DB cũ còn tài khoản dạng khác
         # (lecturer1…) thì đổi tên theo mã thay vì tạo thêm — tránh đụng unique lecturer_id
@@ -258,8 +291,10 @@ def seed(db: Session) -> None:
     db.flush()
 
     advisors = {}
-    for code, name, username in ADVISORS:
-        cv, _ = _get_or_create(db, Advisor, {"code": code}, name=name)
+    for code, name, dob, username in ADVISORS:
+        cv, _ = _get_or_create(db, Advisor, {"code": code}, name=name, dob=dob)
+        if cv.dob is None:  # DB cũ — xem chú thích ở khối giảng viên phía trên
+            cv.dob = dob
         advisors[code] = cv
         # Đổi tài khoản cũ (advisor1…) sang mã — cùng logic với giảng viên
         old = db.scalar(select(User).where(User.advisor_id == cv.id, User.username != username))
@@ -326,11 +361,11 @@ def seed(db: Session) -> None:
                 prerequisite_course_id=courses[prereq_code].id,
             ))
 
-    # --- Kỳ 2025-T1 (đóng, đã có điểm) — TH1.A do DTCGV001 dạy ---
+    # --- Kỳ 2025-T2 = xuân 2026 (COMPLETED, có điểm) — TH1-N01 do DTCGV001 dạy ---
     th1_a, _ = _get_or_create(
-        db, CourseClass, {"course_id": courses["TH1"].id, "year": 2025, "term": 1},
-        lecturer_id=lecturers["DTCGV001"].id, max_size=40, status="closed",
-        schedule=[{"weekday": 2, "start_period": 1, "end_period": 3, "room": "A101"}],
+        db, CourseClass, {"course_id": courses["TH1"].id, "year": 2025, "term": 2},
+        lecturer_id=lecturers["DTCGV001"].id, max_size=40, status="completed",
+        weekday=2, block="morning", room="A101",
     )
     # Điểm TH1.A: DTC001/DTC003/DTC004 đạt (≥5.0 → đủ tiên quyết CTDL/CSDL);
     # DTC002 chỉ 4.0 (điểm chữ D nhưng < ngưỡng qua môn 5.0) → demo chặn tiên quyết
@@ -349,70 +384,74 @@ def seed(db: Session) -> None:
     for code, (process, exam) in grades_th1.items():
         _enroll_with_grade(
             db, students[code], th1_a, process, exam,
-            enrolled_at=_utc(2025, 1, 5), updated_at=_utc(2025, 6, 1),
+            enrolled_at=_utc(2026, 2, 5), updated_at=_utc(2026, 6, 20),
         )
 
-    # --- Kỳ 2025-T2 (đóng, đã có điểm) — dữ liệu GPA cho DTC004 + vài SV khác ---
+    # --- Kỳ 2025-T3 = hè 2026 (COMPLETED, có điểm) — GPA cho DTC004 + vài SV ---
     ctdl_b, _ = _get_or_create(
-        db, CourseClass, {"course_id": courses["CTDL"].id, "year": 2025, "term": 2},
-        lecturer_id=lecturers["DTCGV001"].id, max_size=40, status="closed",
-        schedule=[{"weekday": 3, "start_period": 1, "end_period": 3, "room": "B204"}],
+        db, CourseClass, {"course_id": courses["CTDL"].id, "year": 2025, "term": 3},
+        lecturer_id=lecturers["DTCGV001"].id, max_size=40, status="completed",
+        weekday=3, block="morning", room="B204",
     )
     gdtc1_b, _ = _get_or_create(
-        db, CourseClass, {"course_id": courses["GDTC1"].id, "year": 2025, "term": 2},
-        lecturer_id=lecturers["DTCGV006"].id, max_size=30, status="closed",
-        schedule=[{"weekday": 5, "start_period": 7, "end_period": 9, "room": "SVĐ"}],
+        db, CourseClass, {"course_id": courses["GDTC1"].id, "year": 2025, "term": 3},
+        lecturer_id=lecturers["DTCGV006"].id, max_size=30, status="completed",
+        weekday=5, block="afternoon", room="SVĐ",
     )
     gt1_b, _ = _get_or_create(
-        db, CourseClass, {"course_id": courses["GT1"].id, "year": 2025, "term": 2},
-        lecturer_id=lecturers["DTCGV004"].id, max_size=40, status="closed",
-        schedule=[{"weekday": 6, "start_period": 1, "end_period": 3, "room": "A102"}],
+        db, CourseClass, {"course_id": courses["GT1"].id, "year": 2025, "term": 3},
+        lecturer_id=lecturers["DTCGV004"].id, max_size=40, status="completed",
+        weekday=6, block="morning", room="A102",
     )
-    # DTC004 kỳ 2025-T2: 1 môn đạt C, 1 môn đạt A nhưng KHÔNG tính GPA (GDTC1),
+    # DTC004 kỳ 2025-T3: 1 môn đạt C, 1 môn đạt A nhưng KHÔNG tính GPA (GDTC1),
     # 1 môn trượt F → GPA 1.50 / 4.75, tích lũy 6 TC (đúng smoke_student4.py)
     _enroll_with_grade(db, students["DTC004"], ctdl_b, 6.0, 5.0,
-                       enrolled_at=_utc(2025, 7, 5), updated_at=_utc(2025, 12, 1))
+                       enrolled_at=_utc(2026, 6, 25), updated_at=_utc(2026, 8, 18))
     _enroll_with_grade(db, students["DTC004"], gdtc1_b, 9.0, 9.0,
-                       enrolled_at=_utc(2025, 7, 5), updated_at=_utc(2025, 12, 1))
+                       enrolled_at=_utc(2026, 6, 25), updated_at=_utc(2026, 8, 18))
     _enroll_with_grade(db, students["DTC004"], gt1_b, 3.0, 2.0,
-                       enrolled_at=_utc(2025, 7, 5), updated_at=_utc(2025, 12, 1))
-    # DTC005 / DTC006 học thêm kỳ 2025-T2 cho dữ liệu đa dạng
+                       enrolled_at=_utc(2026, 6, 25), updated_at=_utc(2026, 8, 18))
+    # DTC005 / DTC006 học thêm kỳ hè cho dữ liệu đa dạng
     _enroll_with_grade(db, students["DTC005"], gdtc1_b, 8.0, 8.0,
-                       enrolled_at=_utc(2025, 7, 5), updated_at=_utc(2025, 12, 1))
+                       enrolled_at=_utc(2026, 6, 25), updated_at=_utc(2026, 8, 18))
     _enroll_with_grade(db, students["DTC005"], gt1_b, 7.0, 6.0,
-                       enrolled_at=_utc(2025, 7, 5), updated_at=_utc(2025, 12, 1))
+                       enrolled_at=_utc(2026, 6, 25), updated_at=_utc(2026, 8, 18))
     _enroll_with_grade(db, students["DTC006"], gdtc1_b, 6.0, 6.0,
-                       enrolled_at=_utc(2025, 7, 5), updated_at=_utc(2025, 12, 1))
+                       enrolled_at=_utc(2026, 6, 25), updated_at=_utc(2026, 8, 18))
     _enroll_with_grade(db, students["DTC006"], gt1_b, 4.0, 3.0,   # 3.5 → F
-                       enrolled_at=_utc(2025, 7, 5), updated_at=_utc(2025, 12, 1))
+                       enrolled_at=_utc(2026, 6, 25), updated_at=_utc(2026, 8, 18))
 
-    # --- Kỳ 2026-T1 (đang mở — phục vụ demo đăng ký học phần) ---
-    # Định danh mỗi lớp bằng (mã học phần, phòng) — phòng duy nhất trong kỳ
+    # --- Kỳ 2026-T1 (hiện tại — đang mở, phục vụ demo đăng ký học phần) ---
+    # Định danh mỗi lớp bằng (mã học phần, phòng) — phòng duy nhất trong kỳ.
+    # Thứ tự khai báo = thứ tự tạo = mã N01, N02… của từng môn.
+    # Không lớp nào trùng phòng/GV cùng thứ+khối (đúng luật mới) — riêng cặp
+    # CTDL-N01 vs OOP-N01 CỐ Ý cùng T3 sáng khác phòng → demo chặn 'trùng lịch' SV.
     open_classes = [
-        # (mã HP, mã GV, lịch học, max_size, chú thích demo)
-        ("CTDL", "DTCGV001", {"weekday": 3, "start_period": 4, "end_period": 6, "room": "B201"}, 40,
-         "CTDL.A — lớp chính cho demo đăng ký"),
-        ("CTDL", "DTCGV002", {"weekday": 6, "start_period": 7, "end_period": 9, "room": "B206"}, 40,
-         "CTDL.B — lớp song song"),
-        ("CSDL", "DTCGV003", {"weekday": 4, "start_period": 1, "end_period": 3, "room": "B202"}, 2,
-         "CSDL.A — max_size=2, seed chiếm đủ chỗ → demo 'lớp đã đầy'"),
-        ("OOP", "DTCGV001", {"weekday": 3, "start_period": 4, "end_period": 6, "room": "B203"}, 40,
-         "OOP.A — trùng lịch CTDL.A → demo 'trùng lịch' + chưa đạt tiên quyết"),
-        ("OOP", "DTCGV002", {"weekday": 6, "start_period": 1, "end_period": 3, "room": "B205"}, 40,
-         "OOP.B — DTC004 đang học"),
-        ("GDTC1", "DTCGV006", {"weekday": 5, "start_period": 7, "end_period": 9, "room": "SVĐ"}, 30,
-         "GDTC1.A — không tiên quyết"),
-        ("GT2", "DTCGV004", {"weekday": 7, "start_period": 1, "end_period": 3, "room": "A201"}, 40,
-         "GT2.A — không tiên quyết"),
-        ("AV1", "DTCGV005", {"weekday": 4, "start_period": 7, "end_period": 9, "room": "C101"}, 35,
-         "AV1.A — không tiên quyết"),
+        # (mã HP, mã GV, thứ, khối, phòng, max_size, chú thích demo)
+        ("CTDL", "DTCGV001", 3, "morning", "B201", 40,
+         "CTDL-N01 — lớp chính cho demo đăng ký"),
+        ("CTDL", "DTCGV002", 6, "afternoon", "B206", 40,
+         "CTDL-N02 — lớp song song"),
+        ("CSDL", "DTCGV003", 4, "morning", "B202", 2,
+         "CSDL-N01 — max_size=2, seed chiếm đủ chỗ → demo 'lớp đã đầy'"),
+        ("OOP", "DTCGV003", 3, "morning", "B203", 40,
+         "OOP-N01 — trùng lịch CTDL-N01 (T3 sáng) → demo 'trùng lịch' + chưa đạt tiên quyết"),
+        ("OOP", "DTCGV002", 6, "morning", "B205", 40,
+         "OOP-N02 — DTC004 đang học"),
+        ("GDTC1", "DTCGV006", 5, "afternoon", "SVĐ", 30,
+         "GDTC1-N01 — không tiên quyết"),
+        ("GT2", "DTCGV004", 7, "morning", "A201", 40,
+         "GT2-N01 — không tiên quyết"),
+        ("AV1", "DTCGV005", 4, "afternoon", "C101", 35,
+         "AV1-N01 — không tiên quyết"),
     ]
     cc_by_room = {}
-    for course_code, gv_code, sched, max_size, _note in open_classes:
+    for course_code, gv_code, weekday, block, room, max_size, _note in open_classes:
         cc = _get_or_create_class(
-            db, courses[course_code], lecturers[gv_code], sched, max_size,
+            db, courses[course_code], lecturers[gv_code],
+            weekday=weekday, block=block, room=room, max_size=max_size,
         )
-        cc_by_room[(course_code, sched["room"])] = cc
+        cc_by_room[(course_code, room)] = cc
 
     # Đăng ký sẵn kỳ 2026-T1: DTC003+DTC004 lấp đầy CSDL.A; DTC004 học OOP.B;
     # khối còn lại rải vào các lớp không tiên quyết (lịch không xung đột)
@@ -435,14 +474,34 @@ def seed(db: Session) -> None:
         for key in picks:
             _approve(db, students[code], cc_by_room[key], _utc(2026, 1, 5))
 
+    # --- Buổi dời/nghỉ riêng lẻ (demo ghi đè lịch từng buổi → view tháng/tuần học) ---
+    # Định danh bằng (lớp, seq). Slot bù chọn chỗ đang TRỐNG trong tuần để dữ liệu
+    # chuẩn — không tạo trùng phòng/GV cùng thứ+khối.
+    session_overrides = [
+        # (key lớp, seq, action, thứ bù, khối bù, phòng bù, chú thích demo)
+        (("GDTC1", "SVĐ"), 3, "moved", 7, "afternoon", "SVĐ",
+         "buổi 3 dời T5 chiều → T7 chiều (học bù do nghỉ lễ)"),
+        (("OOP", "B205"), 2, "moved", 2, "evening", "B205",
+         "buổi 2 dời T6 sáng → T2 tối (GV đi hội thảo)"),
+        (("GT2", "A201"), 1, "cancelled", None, None, None,
+         "buổi 1 nghỉ — lễ khai giảng"),
+    ]
+    for key, seq, action, wd, block, room, _note in session_overrides:
+        cc = cc_by_room[key]
+        if db.scalar(select(CourseClassSession).filter_by(course_class_id=cc.id, seq=seq)) is None:
+            db.add(CourseClassSession(
+                course_class_id=cc.id, seq=seq, action=action,
+                weekday=wd, block=block, room=room,
+            ))
+
     db.commit()
     print("Seed hoàn tất.")
     print("\nTài khoản demo — tên đăng nhập = MÃ, mật khẩu chung: password123,")
     print("đăng nhập KHÔNG phân biệt hoa/thường (dtc001 ≡ DTC001):")
     print("  DTCAD001  — Admin / quản trị hệ thống")
     print("  ptdt      — Phòng đào tạo")
-    print("  DTCGV001 — GV Nguyễn Văn An (dạy TH1.A, CTDL.B; 2026-T1: CTDL.A, OOP.A)")
-    print("  DTCGV002 — GV Trần Thị Bình (2026-T1: CTDL.B, OOP.B)")
+    print("  DTCGV001 — GV Nguyễn Văn An (dạy TH1-N01/2025-T2, CTDL-N01/2025-T3; hiện tại: CTDL-N01)")
+    print("  DTCGV002 — GV Trần Thị Bình (hiện tại: CTDL-N02, OOP-N02)")
     print("  DTCCV001 — Cố vấn Ngô Thị Lan (phụ trách CNTT1-K12 + CNTT2-K12)")
     print("  DTCCV002 — Cố vấn Đinh Công Sơn (CNTT1-K11)")
     print("  DTCCV003 — Cố vấn Bùi Thị Huế (ATTT1-K12)")
@@ -454,6 +513,8 @@ def seed(db: Session) -> None:
     print("             3 học kỳ, 6 đăng ký: môn đạt B/C, môn trượt F,")
     print("             môn đang học, HP không tính GPA (GDTC1) → GPA 1.50/4.75")
     print("  DTC005..DTC015 — dữ liệu phân trang/tìm kiếm")
+    print("\nLịch học demo kỳ 2026-T1 (bắt đầu 24/08): GDTC1 buổi 3 dời sang T7 chiều,")
+    print("OOP-N02 buổi 2 dời sang T2 tối, GT2 buổi 1 nghỉ → xem TKB chế độ tháng/tuần học")
 
 
 def wipe() -> None:

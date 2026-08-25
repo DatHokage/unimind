@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { BookOpen } from "lucide-react";
 import api, { errMsg } from "../../api/client";
-import { Card, DataTable, Cell, Spinner, Alert, Button } from "../../components/ui";
+import { Card, DataTable, Cell, Alert, Button, SkeletonListPage } from "../../components/ui";
 import { CourseClassRow } from "../../components/domain/CourseClassRow";
 
 export default function LecturerMyClassesPage() {
@@ -18,7 +18,8 @@ export default function LecturerMyClassesPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <Spinner />;
+  // Skeleton vẽ ngay khi vào route — FCP/LCP không chờ API trả về
+  if (loading) return <SkeletonListPage rows={5} />;
   if (error) return <Alert kind="error">{error}</Alert>;
 
   return (
@@ -29,8 +30,9 @@ export default function LecturerMyClassesPage() {
       <Card padded={false}>
         <DataTable
           columns={[
-            { key: "code", label: "Mã HP" },
+            { key: "code", label: "Mã lớp" },
             { key: "name", label: "Học phần" },
+            { key: "credits", label: "TC", align: "right" },
             { key: "term", label: "Kỳ" },
             { key: "schedule", label: "Lịch học" },
             { key: "size", label: "Sĩ số", align: "right" },

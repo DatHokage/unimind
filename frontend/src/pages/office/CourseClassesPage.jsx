@@ -4,21 +4,24 @@ import { ListFilter, Presentation, Search } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { Card, DataTable, Cell, Spinner, Alert, Button, Pagination } from "../../components/ui";
 import { CourseClassRow } from "../../components/domain/CourseClassRow";
+import { WEEKDAYS, WEEKDAY_LABELS, BLOCK_OPTIONS, TIME_BLOCKS, fmtSessionNote } from "../../utils/format";
 import { INPUT_CLS, INPUT_FILTER_CLS, LABEL_CLS, SELECT_CLS } from "../../utils/forms";
 
-const EMPTY = { course_id: "", lecturer_id: "", term: 1, year: 2026, max_size: 40, status: "open", schedule: [] };
+// Năm/kỳ mặc định lấy từ /course-classes/current-term sau khi tải trang
+const BASE_FORM = { course_id: "", lecturer_id: "", term: 1, year: 2026, max_size: 40, status: "open", weekday: 2, block: "morning", room: "" };
 const EMPTY_FILTERS = { year: "", term: "", status: "", course_id: "", lecturer_id: "" };
 const PAGE_SIZE = 10;
 
-const WEEKDAYS = [
-  { v: 2, label: "Thứ Hai" },
-  { v: 3, label: "Thứ Ba" },
-  { v: 4, label: "Thứ Tư" },
-  { v: 5, label: "Thứ Năm" },
-  { v: 6, label: "Thứ Sáu" },
-  { v: 7, label: "Thứ Bảy" },
-  { v: 8, label: "Chủ Nhật" },
-];
+// Options cho dropdown thứ/khối giờ — dùng chung form chính + panel ghi đè buổi
+const WEEKDAY_OPTS = WEEKDAYS.map((wd) => ({ value: wd, label: WEEKDAY_LABELS[wd] }));
+
+/** Render mảng {value,label} thành các <option> — chọn bằng cách bọc trong <select>. */
+const Options = ({ opts }) =>
+  opts.map((o) => (
+    <option key={o.value} value={o.value}>
+      {o.label}
+    </option>
+  ));
 
 export default function OfficeCourseClassesPage() {
   const location = useLocation();
@@ -30,20 +33,46 @@ export default function OfficeCourseClassesPage() {
   // Dropdown trong form & bộ lọc: toàn bộ học phần/giảng viên (không phân trang)
   const [courses, setCourses] = useState([]);
   const [lecturers, setLecturers] = useState([]);
+  // Kỳ hiện tại của hệ thống — mặc định cho form mở lớp mới
+  const [currentTerm, setCurrentTerm] = useState(null);
   const [search, setSearch] = useState(""); // nội dung ô nhập
   const [appliedSearch, setAppliedSearch] = useState(""); // từ khóa đang áp dụng cho danh sách hiện tại
   const [filters, setFilters] = useState(EMPTY_FILTERS); // nội dung các ô lọc
   const [applied, setApplied] = useState(EMPTY_FILTERS); // bộ lọc đang áp dụng cho danh sách hiện tại
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState(BASE_FORM);
   const [showForm, setShowForm] = useState(() => location.state?.form === 1);
   // Dòng đang sửa — null = chế độ mở lớp mới
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  // Lớp đang chờ xác nhận đóng — bấm lần đầu chỉ hiện xác nhận, chưa đóng ngay
-  const [confirmCloseId, setConfirmCloseId] = useState(null);
+  // Hành động đang chờ xác nhận: { id, kind: "close" | "complete" }
+  const [confirm, setConfirm] = useState(null);
+  // Chỉnh TỪNG buổi khi sửa lớp: seq đang mở panel + nội dung ghi đè
+  const [sessEdit, setSessEdit] = useState(null);
+  const emptySessForm = { action: "moved", weekday: 2, block: "morning", room: "" };
+  const [sessForm, setSessForm] = useState(emptySessForm);
+  const [sessBusy, setSessBusy] = useState(false);
+  // Neo cuộn tới form sửa/mở lớp
+  const formRef = useRef(null);
+  // id của form đã cuộn tới (editing?.id hoặc "new") — để saveSession cập nhật
+  // editing (cùng id, object mới) không làm effect chạy lại → không bị kéo lên
+  // đầu form sau mỗi lần "Lưu buổi"
+  const scrolledFor = useRef(null);
   // Tăng dần mỗi lần gọi API — response của request cũ về sau bị bỏ qua
   const reqId = useRef(0);
+
+  // Mở form (nút Sửa hoặc "+ Mở lớp mới") → cuộn lên đầu form để thao tác ngay
+  useEffect(() => {
+    if (!showForm) {
+      scrolledFor.current = null;
+      return;
+    }
+    const key = editing?.id ?? "new";
+    if (scrolledFor.current !== key) {
+      scrolledFor.current = key;
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [showForm, editing]);
 
   // Server-side pagination: chỉ tải đúng các bản ghi của trang hiện tại, không filter/slice ở frontend.
   // Trả về true nếu response được áp dụng (false = request cũ bị bỏ qua).
@@ -73,6 +102,10 @@ export default function OfficeCourseClassesPage() {
         setLecturers(le.data);
       })
       .catch((e) => setError(errMsg(e)));
+    api
+      .get("/course-classes/current-term")
+      .then(({ data }) => setCurrentTerm(data))
+      .catch(() => {});
     load(0, "", EMPTY_FILTERS)
       .catch((e) => setError(errMsg(e)))
       .finally(() => setLoading(false));
@@ -85,7 +118,7 @@ export default function OfficeCourseClassesPage() {
   useEffect(() => {
     if (location.state?.form === 1) {
       setEditing(null);
-      setForm(EMPTY);
+      setForm(emptyForm());
       setShowForm(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,16 +146,24 @@ export default function OfficeCourseClassesPage() {
 
   const goPage = (p) => load(p, appliedSearch, applied).catch((e) => setError(errMsg(e)));
 
+  const emptyForm = () => ({
+    ...BASE_FORM,
+    year: currentTerm?.year ?? BASE_FORM.year,
+    term: currentTerm?.term ?? BASE_FORM.term,
+  });
+
   const closeForm = () => {
     setShowForm(false);
     setEditing(null);
-    setForm(EMPTY);
+    setSessEdit(null);
+    setForm(BASE_FORM);
   };
 
   // Nạp dữ liệu dòng vào form và mở chế độ sửa
   const startEdit = (c) => {
     setError("");
     setEditing(c);
+    setSessEdit(null);
     setForm({
       course_id: c.course_id,
       lecturer_id: c.lecturer_id ?? "",
@@ -130,7 +171,9 @@ export default function OfficeCourseClassesPage() {
       year: c.year,
       max_size: c.max_size,
       status: c.status,
-      schedule: c.schedule ?? [],
+      weekday: c.weekday,
+      block: c.block,
+      room: c.room ?? "",
     });
     setShowForm(true);
   };
@@ -139,20 +182,21 @@ export default function OfficeCourseClassesPage() {
     e.preventDefault();
     setError("");
     setSuccess("");
+    // Lịch cố định: thứ + khối giờ + phòng (không đổi suốt khóa học)
+    const slot = {
+      weekday: Number(form.weekday),
+      block: form.block,
+      room: form.room.trim() || null,
+    };
     try {
       if (editing) {
         await api.patch(`/course-classes/${editing.id}`, {
           lecturer_id: form.lecturer_id ? Number(form.lecturer_id) : null,
           max_size: Number(form.max_size),
           status: form.status,
-          schedule: form.schedule.map((s) => ({
-            weekday: Number(s.weekday),
-            start_period: Number(s.start_period),
-            end_period: Number(s.end_period),
-            room: s.room?.trim() || null,
-          })),
+          ...slot,
         });
-        setSuccess(`Đã cập nhật lớp ${courses.find((c) => c.id === editing.course_id)?.code ?? ""}`);
+        setSuccess(`Đã cập nhật lớp ${editing.code}`);
         closeForm();
       } else {
         await api.post("/course-classes", {
@@ -162,15 +206,10 @@ export default function OfficeCourseClassesPage() {
           year: Number(form.year),
           max_size: Number(form.max_size),
           status: form.status,
-          schedule: form.schedule.map((s) => ({
-            weekday: Number(s.weekday),
-            start_period: Number(s.start_period),
-            end_period: Number(s.end_period),
-            room: s.room?.trim() || null,
-          })),
+          ...slot,
         });
         setSuccess("Đã mở lớp học phần mới");
-        setForm(EMPTY);
+        setForm(BASE_FORM);
         setShowForm(false);
       }
       await load(page, appliedSearch, applied);
@@ -191,27 +230,98 @@ export default function OfficeCourseClassesPage() {
     }
   };
 
-  // ---- Chỉnh lịch học trong form ----
-
-  const setSession = (idx, key, value) =>
-    setForm((f) => ({
-      ...f,
-      schedule: f.schedule.map((s, i) => (i === idx ? { ...s, [key]: value } : s)),
-    }));
-
-  const addSession = () =>
-    setForm((f) => ({
-      ...f,
-      schedule: [...f.schedule, { weekday: 2, start_period: 1, end_period: 3, room: "" }],
-    }));
-
-  const removeSession = (idx) =>
-    setForm((f) => ({ ...f, schedule: f.schedule.filter((_, i) => i !== idx) }));
+  // CLOSED → COMPLETED: backend kiểm tra đủ điểm trước khi chấp nhận
+  const completeClass = async (c) => {
+    setError("");
+    setSuccess("");
+    try {
+      await api.post(`/course-classes/${c.id}/complete`);
+      setSuccess(`Đã chuyển lớp ${c.code} sang HOÀN THÀNH — lớp chỉ còn tra cứu`);
+      await load(page, appliedSearch, applied);
+    } catch (err) {
+      setError(errMsg(err));
+    }
+  };
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const setF = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
 
+  // Cụm xác nhận 2 bước cho hành động khó đảo ngược (đóng lớp / hoàn thành lớp):
+  // lần 1 hiện nút hành động, bấm mới chuyển "Chắc chắn … + Hủy", bấm lần 2 mới chạy.
+  const confirmOr = (c, kind, { label, confirmLabel, danger = false, onConfirm }) =>
+    confirm?.id === c.id && confirm.kind === kind ? (
+      <span className="inline-flex gap-2">
+        <Button
+          size="sm"
+          variant={danger ? "danger" : "primary"}
+          onClick={() => {
+            setConfirm(null);
+            onConfirm();
+          }}
+        >
+          {confirmLabel}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setConfirm(null)}>
+          Hủy
+        </Button>
+      </span>
+    ) : (
+      <Button
+        size="sm"
+        variant={danger ? "danger" : "primary"}
+        onClick={() => setConfirm({ id: c.id, kind })}
+      >
+        {label}
+      </Button>
+    );
+
   const hasFilter = appliedSearch || Object.values(applied).some(Boolean);
+
+  // Học phần đang chọn trong form → sinh danh sách buổi (1 tín chỉ = 3 buổi)
+  const formCourse = courses.find((c) => c.id === Number(form.course_id));
+
+  // Mở panel ghi đè cho 1 buổi (chỉ khi đang sửa lớp có sẵn)
+  const openSession = (seq, ov) => {
+    setSessEdit(seq);
+    if (ov) {
+      setSessForm({
+        action: ov.action,
+        weekday: ov.weekday ?? 2,
+        block: ov.block ?? "morning",
+        room: ov.room ?? "",
+      });
+    } else {
+      setSessForm(emptySessForm);
+    }
+  };
+
+  // Lưu ghi đè 1 buổi — gọi API ngay (không chờ nút Lưu của form)
+  const saveSession = async () => {
+    setError("");
+    setSessBusy(true);
+    try {
+      let out;
+      if (sessForm.action === "normal") {
+        out = await api.delete(`/course-classes/${editing.id}/sessions/${sessEdit}`);
+      } else {
+        const body = { action: sessForm.action };
+        if (sessForm.action === "moved") {
+          body.weekday = Number(sessForm.weekday);
+          body.block = sessForm.block;
+          body.room = sessForm.room.trim() || null;
+        }
+        out = await api.put(`/course-classes/${editing.id}/sessions/${sessEdit}`, body);
+      }
+      setEditing(out.data); // response chứa session_overrides mới nhất
+      setClasses((cs) => cs.map((c) => (c.id === out.data.id ? out.data : c)));
+      setSuccess(`Đã cập nhật lịch buổi ${sessEdit} của lớp ${out.data.code}`);
+      setSessEdit(null);
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setSessBusy(false);
+    }
+  };
 
   if (loading) return <Spinner />;
 
@@ -249,10 +359,11 @@ export default function OfficeCourseClassesPage() {
         <ListFilter size={15} className="text-secondary ml-2" />
         <input className={`${INPUT_FILTER_CLS} w-16`} type="number" placeholder="Năm" value={filters.year} onChange={setF("year")} />
         <input className={`${INPUT_FILTER_CLS} w-16`} type="number" placeholder="Kỳ" value={filters.term} onChange={setF("term")} />
-        <select className={`${SELECT_CLS} w-36`} value={filters.status} onChange={setF("status")}>
+        <select className={`${SELECT_CLS} w-40`} value={filters.status} onChange={setF("status")}>
           <option value="">Mọi trạng thái</option>
           <option value="open">Mở đăng ký</option>
           <option value="closed">Đóng</option>
+          <option value="completed">Hoàn thành</option>
         </select>
         <select className={`${SELECT_CLS} w-56`} value={filters.course_id} onChange={setF("course_id")}>
           <option value="">Mọi học phần</option>
@@ -272,10 +383,11 @@ export default function OfficeCourseClassesPage() {
       </div>
 
       {showForm && (
-        <Card
+        <div ref={formRef} className="scroll-mt-20">
+          <Card
           title={
             editing
-              ? `Sửa lớp ${courses.find((c) => c.id === editing.course_id)?.code ?? ""} · HK${editing.term}/${editing.year}`
+              ? `Sửa lớp ${editing.code} · HK${editing.term}/${editing.year}`
               : "Mở lớp học phần mới"
           }
           actions={
@@ -323,70 +435,147 @@ export default function OfficeCourseClassesPage() {
               <input className={INPUT_CLS} type="number" min="1" value={form.max_size} onChange={set("max_size")} required />
             </div>
 
-            {/* Lịch học */}
+            {/* Lịch cố định: 1 buổi/tuần × (số tín chỉ × 3) tuần trong cùng phòng */}
             <div className="md:col-span-3">
-              <div className="text-sm font-medium mb-1.5">Lịch học</div>
-              <div className="space-y-2">
-                {form.schedule.map((s, i) => (
-                  <div key={i} className="flex flex-wrap items-center gap-2">
-                    <select
-                      className={`${SELECT_CLS} w-32`}
-                      value={s.weekday}
-                      onChange={(e) => setSession(i, "weekday", e.target.value)}
-                    >
-                      {WEEKDAYS.map((w) => (
-                        <option key={w.v} value={w.v}>{w.label}</option>
-                      ))}
-                    </select>
-                    <input
-                      className={`${INPUT_CLS} w-24`}
-                      type="number"
-                      min="1"
-                      max="15"
-                      placeholder="Tiết bắt đầu"
-                      value={s.start_period}
-                      onChange={(e) => setSession(i, "start_period", e.target.value)}
-                      required
-                    />
-                    <input
-                      className={`${INPUT_CLS} w-24`}
-                      type="number"
-                      min="1"
-                      max="15"
-                      placeholder="Tiết kết thúc"
-                      value={s.end_period}
-                      onChange={(e) => setSession(i, "end_period", e.target.value)}
-                      required
-                    />
-                    <input
-                      className={`${INPUT_CLS} w-32`}
-                      placeholder="Phòng (VD: A1)"
-                      value={s.room ?? ""}
-                      onChange={(e) => setSession(i, "room", e.target.value)}
-                    />
-                    <Button variant="ghost" size="sm" onClick={() => removeSession(i)}>
-                      Bỏ buổi
-                    </Button>
-                  </div>
-                ))}
-                <Button variant="secondary" size="sm" onClick={addSession}>
-                  + Thêm buổi học
-                </Button>
+              <div className="text-sm font-medium mb-1.5">Lịch học cố định (1 buổi/tuần)</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  className={`${SELECT_CLS} w-32`}
+                  value={form.weekday}
+                  onChange={set("weekday")}
+                  required
+                >
+                  <Options opts={WEEKDAY_OPTS} />
+                </select>
+                <select
+                  className={`${SELECT_CLS} w-52`}
+                  value={form.block}
+                  onChange={set("block")}
+                  required
+                >
+                  <Options opts={BLOCK_OPTIONS} />
+                </select>
+                <input
+                  className={`${INPUT_CLS} w-36`}
+                  placeholder="Phòng (VD: B201)"
+                  value={form.room}
+                  onChange={set("room")}
+                />
               </div>
+              <p className="text-xs text-secondary mt-1.5">
+                Buổi học chiếm trọn khối giờ và giữ nguyên phòng trong suốt khóa. Trùng phòng hoặc trùng giảng viên
+                cùng thứ/khối sẽ bị hệ thống từ chối.
+              </p>
+
+              {/* Toàn bộ buổi học của lớp — sinh từ lịch cố định phía trên.
+                  Khi sửa lớp: bấm vào từng buổi để dời/nghỉ riêng (trường hợp đặc biệt). */}
+              {formCourse?.credits ? (
+                <div className="mt-3">
+                  <div className="text-xs text-secondary mb-1.5">
+                    <b className="text-primary num">{formCourse.credits * 3} buổi</b> · mỗi tuần 1 buổi ·{" "}
+                    {WEEKDAY_LABELS[form.weekday]} · {TIME_BLOCKS[form.block]?.label} · {form.room || "chưa có phòng"}
+                    {editing
+                      ? " — bấm vào buổi để dời/nghỉ riêng; đổi lịch phía trên sẽ chuyển cả lớp"
+                      : " — đổi lịch phía trên sẽ chuyển toàn bộ các buổi này"}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Array.from({ length: formCourse.credits * 3 }, (_, i) => {
+                      const seq = i + 1;
+                      const ov = editing?.session_overrides?.find((o) => o.seq === seq);
+                      const style = !ov
+                        ? "bg-app border-border hover:border-primary"
+                        : ov.action === "moved"
+                          ? "border-primary bg-primary-soft"
+                          : "border-danger/40 bg-danger/10 line-through opacity-70";
+                      return editing ? (
+                        <button
+                          key={seq}
+                          type="button"
+                          onClick={() => openSession(seq, ov)}
+                          title={ov ? fmtSessionNote(ov) : "Bấm để dời/nghỉ buổi này"}
+                          className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs num cursor-pointer transition-colors ${style}`}
+                        >
+                          Buổi {seq}
+                          {ov && (ov.action === "moved" ? " ↗" : " ✕")}
+                        </button>
+                      ) : (
+                        <span
+                          key={seq}
+                          className="inline-flex items-center rounded-md bg-app border border-border px-2 py-0.5 text-xs num"
+                        >
+                          Buổi {seq}
+                        </span>
+                      );
+                    })}
+                  </div>
+
+                  {/* Panel ghi đè cho buổi đang chọn */}
+                  {sessEdit != null && editing && (
+                    <div className="mt-2 bg-app border border-border rounded-lg p-3 space-y-2 max-w-md">
+                      <div className="text-sm font-medium">Buổi {sessEdit}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          className={`${SELECT_CLS} w-56`}
+                          value={sessForm.action}
+                          onChange={(e) => setSessForm((s) => ({ ...s, action: e.target.value }))}
+                        >
+                          <option value="normal">Học bình thường (bỏ ghi đè)</option>
+                          <option value="moved">Dời sang slot khác</option>
+                          <option value="cancelled">Nghỉ buổi này</option>
+                        </select>
+                      </div>
+                      {sessForm.action === "moved" && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            className={`${SELECT_CLS} w-32`}
+                            value={sessForm.weekday}
+                            onChange={(e) => setSessForm((s) => ({ ...s, weekday: e.target.value }))}
+                          >
+                            <Options opts={WEEKDAY_OPTS} />
+                          </select>
+                          <select
+                            className={`${SELECT_CLS} w-52`}
+                            value={sessForm.block}
+                            onChange={(e) => setSessForm((s) => ({ ...s, block: e.target.value }))}
+                          >
+                            <Options opts={BLOCK_OPTIONS} />
+                          </select>
+                          <input
+                            className={`${INPUT_CLS} w-32`}
+                            placeholder="Phòng bù"
+                            value={sessForm.room}
+                            onChange={(e) => setSessForm((s) => ({ ...s, room: e.target.value }))}
+                          />
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={saveSession} disabled={sessBusy}>
+                          {sessBusy ? "Đang lưu…" : "Lưu buổi"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setSessEdit(null)}>
+                          Đóng
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
 
             <div className="md:col-span-3">
               <Button type="submit">{editing ? "Lưu thay đổi" : "Mở lớp"}</Button>
             </div>
           </form>
-        </Card>
+          </Card>
+        </div>
       )}
 
       <Card padded={false}>
         <DataTable
           columns={[
-            { key: "code", label: "Mã HP" },
+            { key: "code", label: "Mã lớp" },
             { key: "name", label: "Học phần" },
+            { key: "credits", label: "TC", align: "right" },
             { key: "term", label: "Kỳ" },
             { key: "schedule", label: "Lịch" },
             { key: "lecturer", label: "GV" },
@@ -418,35 +607,29 @@ export default function OfficeCourseClassesPage() {
                       Sinh viên
                     </Button>
                   </Link>
-                  <Button size="sm" variant="secondary" onClick={() => startEdit(c)}>
-                    Sửa
-                  </Button>
-                  {c.status === "open" ? (
-                    confirmCloseId === c.id ? (
-                      <span className="inline-flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={() => {
-                            setConfirmCloseId(null);
-                            toggleStatus(c);
-                          }}
-                        >
-                          Chắc chắn đóng
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setConfirmCloseId(null)}>
-                          Hủy
-                        </Button>
-                      </span>
-                    ) : (
-                      <Button size="sm" variant="danger" onClick={() => setConfirmCloseId(c.id)}>
-                        Đóng lớp
-                      </Button>
-                    )
-                  ) : (
-                    <Button size="sm" variant="secondary" onClick={() => toggleStatus(c)}>
-                      Mở lớp
+                  {c.status !== "completed" && (
+                    <Button size="sm" variant="secondary" onClick={() => startEdit(c)}>
+                      Sửa
                     </Button>
+                  )}
+                  {c.status === "open" &&
+                    confirmOr(c, "close", {
+                      label: "Đóng lớp",
+                      confirmLabel: "Chắc chắn đóng",
+                      danger: true,
+                      onConfirm: () => toggleStatus(c),
+                    })}
+                  {c.status === "closed" && (
+                    <>
+                      <Button size="sm" variant="secondary" onClick={() => toggleStatus(c)}>
+                        Mở lại
+                      </Button>
+                      {confirmOr(c, "complete", {
+                        label: "Hoàn thành",
+                        confirmLabel: "Chắc chắn hoàn thành",
+                        onConfirm: () => completeClass(c),
+                      })}
+                    </>
                   )}
                 </span>
               </Cell>

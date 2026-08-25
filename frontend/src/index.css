@@ -1,5 +1,11 @@
 @import "tailwindcss";
 @import "./styles/tokens.css";
+/* Font Inter tự host (@fontsource/inter) — thay Google Fonts CDN, có sẵn
+   subset vietnamese + font-display: swap nên không chặn lần tô chữ đầu */
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
 
 /* Tailwind v4: map design tokens (§2) vào palette mặc định để dùng được
    utility class: bg-app, bg-surface, bg-primary, text-secondary, border-border... */
@@ -34,10 +40,10 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* ===== Trang đăng nhập — "Tri thức trôi nổi" trên nền ấm =====
-   Lớp 0: gradient ấm paper/mist + glow nhẹ; lớp 1: WebGL Three.js với các trang giấy
-   trôi nổi có cạnh vàng signature; lớp 2: vignette mềm không làm tối nền.
-   prefers-reduced-motion: tắt motion CSS, cảnh 3D tự render 1 frame tĩnh.
+/* ===== Trang đăng nhập — "Bàn học flat-lay" trên nền ấm =====
+   Lớp 0: gradient ấm paper/mist + glow nhẹ; lớp 1: SVG + WebGL thuần (không
+   thư viện) dựng cảnh bàn học theo giờ trong ngày; lớp 2: vignette mềm không
+   làm tối nền. prefers-reduced-motion: tắt motion CSS, cảnh tự chốt 1 khung tĩnh.
 
    Color tokens theo thiết kế UniMind:
    --paper: #F7F5F0
@@ -55,6 +61,10 @@ body {
   --eyebrow: #6B6B60;
   --inkline: #2E2E2A;
   --blueline: #0095FF;
+  /* Sắc xanh đậm hơn dành riêng cho chữ headline cỡ lớn trên nền kem —
+     tương phản ~3.4:1 thay vì 3.1:1 của #0095FF, dư địa an toàn chuẩn AA.
+     Đêm về DeskScene ghi đè thành vàng gilt sáng hơn --blueline một bậc */
+  --blueline-strong: #0087E8;
 }
 
 .login-bg-base {
@@ -111,19 +121,21 @@ body {
 /* ===== Nền đăng nhập — "Bàn học flat-lay" (SVG, DeskScene.jsx) =====
    Nhìn từ trên xuống: cà phê, sách mở, bút chì thành cụm dưới trái, chừa
    trống cho chữ (trái) và card (phải). Biến do rAF trong DeskScene ghi:
-   --mx/--my parallax chuột (-1..1)    --sx/--sy hướng bóng theo mặt trời
-   --sscale  độ kéo dài bóng           --ambient lớp phủ ánh sáng theo giờ
+   --mx/--my parallax chuột (-1..1)    --srot hướng bóng theo mặt trời
+   --sgrow độ thấp trời (kéo dài bóng) --scot lệch tâm theo chiều cao vật
+   --ambient lớp phủ ánh sáng theo giờ
    --skytop/--skybot gradient bầu trời --stars  độ hiện của sao đêm
    --pool    vũng đèn ấm giữ chữ dễ đọc khi tối
    --lampbook đèn đọc sách buổi tối   --steam khói cà phê  --dustglow bụi */
 .desk-scene {
   --mx: 0;
   --my: 0;
-  --sx: -24px;
-  --sy: -14px;
-  --sscale: 1.18;
-  --skytop: rgb(207, 232, 255);
-  --skybot: rgb(253, 246, 232);
+  /* Mặc định ≈ 08:15 (day 0.08) — rAF ghi đè ngay khung đầu tiên */
+  --srot: 150deg;
+  --sgrow: 0.75;
+  --scot: 0.9;
+  --skytop: rgb(159, 208, 255);
+  --skybot: rgb(234, 246, 255);
   --ambient: rgba(255, 250, 240, 0);
   --stars: 0;
   --pool: 0;
@@ -135,6 +147,12 @@ body {
   --sunglow: rgba(255, 214, 138, 0.5);
   --sunmode: 1;
   --moonn: 0;
+  /* Cỡ cốc cà phê — .desk-steam-gl suy toàn bộ vị trí từ biến này nên đổi cỡ
+     cúp chỉ cần sửa Ở ĐÂY (màn nhỏ override đúng một dòng, xem cuối section) */
+  --cup-w: min(12vw, 175px);
+  /* Đáy ly cà phê — .desk-steam-gl cũng neo theo biến này nên dịch cốc bao nhiêu
+     thì cột hơi đi theo bấy nhiêu, không bao giờ lệch khỏi miệng cúp */
+  --coffee-b: 11.5vh;
 }
 
 /* Bầu trời toàn màn — gradient đỉnh→chân trời nội suy theo thời gian.
@@ -269,14 +287,57 @@ body {
 }
 
 /* Vị trí đồ vật — cụm tĩnh vật dưới trái: ly cà phê → sách mở → bút chì
-   nằm xiên chạm mép trang phải của sách, cả cụm cân quanh ly cà phê */
-.desk-item-book    { left: 14.5vw; bottom: 12.5vh; width: min(23vw, 330px); }
-.desk-item-coffee  { left: 3.5vw; bottom: 13vh; width: min(12vw, 175px); }
-.desk-item-pencil  { left: 30.5vw; bottom: 10vh; width: min(19vw, 280px); }
+   nằm xiên chạm mép trang phải của sách, cả cụm cân quanh ly cà phê.
+   Cả cụm hạ 1.5vh so với bản gốc để xa khối chữ vừa được nâng lên; giữ sàn
+   ~11vh vì dưới còn đồng hồ nhật trình ở góc (màn 768px hạ sâu là đè) */
+.desk-item-book    { left: 14.5vw; bottom: 11vh; width: min(23vw, 330px); }
+.desk-item-coffee  { left: 3.5vw; bottom: var(--coffee-b); width: var(--cup-w); }
+.desk-item-pencil  { left: 30.5vw; bottom: 8.5vh; width: min(19vw, 280px); }
 
-/* Bóng đổ đồ vật xoay + kéo dài theo góc nắng (bánh xe chuột điều khiển) */
+/* Hơi nước shader (WebGL) đè vùng trên miệng cúp — tọa độ suy từ hộp
+   .desk-item-coffee (viewBox 200×240, cao = 1.2 lần rộng): cột hơi chiếm 64%
+   ngang, đáy canvas chìm xuống mặt cà phê (shader tự che bằng fade) nên hơi
+   nhú ra SAU vành cúp. .desk-steam SVG chỉ còn vai trò fallback khi thiếu WebGL */
+.desk-steam-gl {
+  position: absolute;
+  left: calc(3.5vw + var(--cup-w) * 0.18);
+  bottom: calc(var(--coffee-b) + var(--cup-w) * 0.55);
+  width: calc(var(--cup-w) * 0.64);
+  aspect-ratio: 1 / 1.2;
+  pointer-events: none;
+  visibility: hidden; /* chỉ hiện khi canvas shader sẵn sàng (.is-steamgl) */
+}
+.is-steamgl .desk-steam-gl { visibility: visible; }
+.is-steamgl .desk-steam { display: none; }
+
+/* Bóng đổ đồ vật — MỘT mô hình chung cho cả ba vật (đồng nhất cùng nguồn
+   nắng): DeskScene ghi 3 đại lượng thô mỗi khung — --srot (góc hướng nắng),
+   --sgrow (0..1 độ thấp trời), --scot (cot góc nắng, lệch tâm) — mọi bóng
+   cùng quay theo --srot, cùng kéo dài theo --sgrow, cùng nhạt dần; khác
+   nhau duy nhất hình elip gốc bám sát từng vật.
+
+   Thứ tự transform áp dụng phải-trước-sau: translateX → scale → rotate.
+   translateX neo MÉP GẦN (phía mặt trời) đúng tại chỗ tiếp xúc bàn:
+   mép trái local x = −a sau scale về lại −a ⇒ tx = a(1 − 1/scale)
+   (a = 50% bề rộng fill-box). Nhờ vậy bóng chỉ mọc ĐUÔI ra xa nắng,
+   không bao giờ bong khỏi chân vật như elip trôi. Scale ngang ∈ [1..2] —
+   trưa nắng bóng ≈ chu vi đáy vật, không bao giờ co nhỏ hơn vật; trời thấp
+   bóng dài kèm dày ngang nhẹ (penumbra loang) và NHẠT đi (năng lượng trải
+   trên diện tích lớn hơn). */
 .desk-shadow {
-  transform: translate(var(--sx), var(--sy)) scale(var(--sscale));
+  --sh: 10px; /* biên độ lệch tâm tối đa — như nhau cho mọi vật */
+  --sscale: calc(1 + var(--sgrow, 0));
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: rotate(var(--srot, 0deg))
+    scale(var(--sscale), calc(1 + (var(--sscale) - 1) * 0.2))
+    translateX(
+      calc(
+        (1 - 1 / var(--sscale)) * 50% +
+          var(--sh) * var(--scot, 0) / var(--sscale)
+      )
+    );
+  opacity: calc(0.95 - 0.52 * var(--sgrow, 0));
 }
 
 /* Góc trang lay nhẹ — neo ở cạnh gáy (bên trái mảnh) */
@@ -338,10 +399,11 @@ body {
 .desk-pool {
   position: absolute;
   inset: 0;
+  /* Kem ấm thay vì trắng — đỉnh thấp để đồ vật giữ khối màu, không bị "rửa" */
   background: radial-gradient(
     ellipse 72% 58% at 42% 66%,
-    rgba(255, 241, 214, 0.95) 0%,
-    rgba(255, 238, 205, 0.6) 46%,
+    rgba(255, 232, 192, 0.85) 0%,
+    rgba(255, 224, 180, 0.4) 46%,
     transparent 76%
   );
   opacity: var(--pool);
@@ -418,6 +480,21 @@ body {
   color: #5A5A50;
   padding-bottom: 3px;
 }
+
+/* ===== Lớp WebGL thuần (components/scene/glLayers.js) =====
+   Canvas bầu trời shader (dưới cùng, thay .desk-sky). Chỉ kích hoạt khi tạo
+   context thành công — DeskScene thêm class .is-gl lúc đó; thất bại thì mọi
+   thứ về fallback CSS/SVG nguyên trạng, không bao giờ chặn việc đăng nhập. */
+.desk-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+/* GL sẵn sàng: tắt fallback tương ứng — trời và sao chuyển sang shader */
+.desk-scene.is-gl .desk-sky { opacity: 0; }
+.desk-scene.is-gl .desk-starwrap { display: none; }
 /* Hint compositor chỉ bật trên máy có chuột tinh chỉnh — mobile kiệm RAM GPU:
    không có chuột thì các lớp này hầu như không bao giờ đổi transform,
    giữ will-change là giữ vài lớp full-screen trong bộ nhớ compositor vô ích */
@@ -433,11 +510,13 @@ body {
 }
 
 @media (max-width: 1023px) {
-  /* Mobile/tablet: không có bánh xe tinh chỉnh — thu gọn chi tiết phụ */
+  /* Mobile/tablet: không có bánh xe tinh chỉnh — thu gọn chi tiết phụ.
+     Cúp thu nhỏ chỉ cần đổi --cup-w: .desk-item-coffee lẫn .desk-steam-gl đều
+     suy từ biến này nên hơi nước không bao giờ rớt khỏi miệng cốc */
   .desk-orbit { display: none; }
   .desk-item-pencil { display: none; }
   .desk-item-book { width: min(34vw, 220px); }
-  .desk-item-coffee { width: min(20vw, 140px); }
+  .desk-scene { --cup-w: min(20vw, 140px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

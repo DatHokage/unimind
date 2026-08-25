@@ -50,10 +50,11 @@ Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgre
 - id, code (mã SV, unique), name, dob, major_id (FK → Major), class_id (FK → HomeroomClass)
 
 **Lecturer**
-- id, code (unique), name, department
+- id, code (unique), name, department, dob (ngày sinh, nullable), degree (học vị ThS./TS./PGS.TS…, nullable)
+- **Học vị chỉ có ở giảng viên** — cố vấn học tập không cần trường này
 
 **Advisor** (cố vấn học tập)
-- id, code (unique), name
+- id, code (unique), name, dob (ngày sinh, nullable)
 - Hỗ trợ sinh viên, KHÔNG giảng dạy — bảng riêng, không gộp chung với `Lecturer`
 
 **Major** (ngành học)
@@ -69,7 +70,19 @@ Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgre
 - Quan hệ tự tham chiếu nhiều-nhiều qua bảng `Prerequisite` (course_id, prerequisite_course_id)
 
 **CourseClass** (lớp học phần — 1 học phần mở nhiều lớp theo kỳ)
-- id, course_id (FK), lecturer_id (FK → Lecturer), term, year, max_size, schedule (thứ/tiết/phòng), status (open/closed)
+- id, course_id (FK), lecturer_id (FK → Lecturer), term, year, max_size, status (open / closed / completed)
+- **Lịch cố định 1 buổi/tuần**: `weekday` (thứ theo quy ước VN 2..8 — 8 = Chủ nhật), `block` (khối giờ chuẩn: morning tiết 1–5 · afternoon tiết 6–10 · evening tiết 11–15), `room` (phòng cố định suốt khóa)
+- Số buổi cả khóa = `credits × 3`, mỗi tuần 1 buổi — buổi `seq` rơi vào tuần `seq`
+
+**CourseClassSession** (ghi đè lịch TỪNG buổi — nghỉ lễ, GV đi hội thảo, học bù…)
+- id, course_class_id (FK), seq (buổi thứ mấy, 1..credits×3), action (`moved` / `cancelled`)
+- `moved`: kèm weekday/block/room học bù (trường bỏ trống kế thừa lịch cố định của lớp); slot bù bị chặn nếu đụng phòng/giảng viên của lớp khác cùng kỳ
+- `cancelled`: giữ nguyên ngày gốc, chỉ đánh dấu nghỉ
+- Unique (course_class_id, seq) — không có dòng = buổi đó học lịch thường
+
+**AcademicTerm** (học kỳ + ngày bắt đầu — gốc quy đổi lịch ra ngày cụ thể)
+- id, year, term, start_date (thứ Hai của tuần 1)
+- Unique (year, term); PĐT nhập `start_date` thì hệ thống mới tính được ngày từng buổi cho TKB tháng / tuần học
 
 **Enrollment** (đăng ký học phần)
 - id, student_id (FK), course_class_id (FK), enrolled_at, status (pending/approved/cancelled)
@@ -92,6 +105,8 @@ Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgre
 - CourseClass (N) — (1) Lecturer [1 giảng viên dạy nhiều lớp học phần]
 - Enrollment (N) — (1) Student, Enrollment (N) — (1) CourseClass
 - Grade (1) — (1) Enrollment
+- CourseClassSession (N) — (1) CourseClass [ghi đè theo từng buổi]
+- AcademicTerm — bảng tra cứu độc lập theo cặp (year, term), không FK tới bảng nào
 
 ---
 
@@ -109,7 +124,7 @@ Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgre
 | GET/POST | `/students` | Danh sách / tạo sinh viên | training_office |
 | GET/PUT | `/students/{id}` | Xem / sửa 1 sinh viên | training_office, chính SV đó (chỉ xem) |
 | GET/POST | `/lecturers` | Danh sách / tạo giảng viên | training_office |
-| GET/POST | `/advisors` | Danh sách / tạo cố vấn học tập (kèm tài khoản role `advisor` tùy chọn) | training_office |
+| GET/POST | `/advisors` | Danh sách / tạo cố vấn học tập (kèm tài khoản role `advisor` tùy chọn; danh sách trả đủ ngày sinh + các lớp hành chính đang phụ trách) | training_office |
 | GET/PUT/DELETE | `/advisors/{id}` | Xem / sửa / xóa 1 cố vấn (chặn xóa nếu đang phụ trách lớp) | training_office; advisor xem chính mình |
 | GET/POST | `/homeroom-classes` | Danh sách / tạo lớp hành chính, gán advisor | training_office |
 | GET | `/homeroom-classes/{id}/students` | Danh sách SV trong lớp hành chính | advisor phụ trách lớp đó, training_office |
@@ -141,7 +156,26 @@ Kiến trúc: **client-server 3 tầng** (React ↔ FastAPI ↔ Supabase Postgre
 |---|---|---|---|
 | POST | `/ai/course-advice` | Input: student_id → AI gợi ý học phần nên đăng ký kỳ tới + giải thích điều kiện tiên quyết | student (chính mình) |
 | POST | `/ai/regulation-chat` | Hỏi-đáp quy chế (RAG): trả lời kèm trích dẫn Điều/Khoản/trang; ngữ cảnh hội thoại theo `session_id`. Kèm `GET /ai/regulation-chat/status` (kiểm tra sẵn sàng) và `GET /ai/regulation-chat/models` (danh sách model cho dropdown). Trả 503 khi pipeline chưa cấu hình, 502 khi LLM lỗi | Đã đăng nhập |
-| POST | `/ai/study-summary` | Input: student_id → AI tóm tắt tiến độ + gợi ý cải thiện | Chính SV, advisor phụ trách |
+| POST | `/ai/study-summary` | Input: student_id → AI tóm tắt tiến độ + gợi ý cải thiện | Chính SV |
+| POST | `/ai/class-overview` | Input: class_id → AI nhận xét tổng quan lớp hành chính (điểm mạnh / điểm yếu / gợi ý) từ SỐ LIỆU TỔNG HỢP — prompt không chứa dữ liệu riêng của sinh viên nào; stats hiển thị do server tự tính, không tin output AI | advisor phụ trách lớp đó |
+
+### 4.6. Thời khóa biểu & lịch học
+| Method | Endpoint | Mô tả | Quyền |
+|---|---|---|---|
+| GET | `/schedule/student/{student_id}?year=&term=` | TKB của 1 SV theo kỳ: danh sách lớp (lịch tuần điển hình), các kỳ đã học, `start_date` và `sessions` — toàn bộ buổi học quy đổi ra ngày cụ thể (date/week/status/thứ/khối/phòng/tiết) | Chính SV, advisor phụ trách, training_office |
+| GET | `/course-classes/current-term` | Kỳ mới nhất có lớp trong hệ thống — mặc định cho trang đăng ký & TKB | Đã đăng nhập |
+| PUT | `/course-classes/{id}/sessions/{seq}` | Dời/nghỉ 1 buổi riêng lẻ: `moved` bắt buộc thứ + khối bù và check xung đột phòng/GV; `cancelled` nghỉ giữ chỗ gốc. Gọi lại trên cùng buổi = ghi đè mới. Lớp `completed` bị chặn sửa | training_office |
+| DELETE | `/course-classes/{id}/sessions/{seq}` | Xóa ghi đè — buổi trở lại lịch cố định của lớp | training_office |
+
+**Quy tắc mở rộng lịch (`services/schedule_service.py`) — MỘT nguồn sự thật duy nhất** cho mọi view cần ngày thật (TKB tháng, danh sách tuần học, highlight hôm nay, xuất ICS sau này):
+- Tuần 1 = tuần chứa `start_date` (chuẩn hóa về thứ Hai); buổi `seq` ở tuần `seq` → ngày học = Thứ Hai tuần đó + (weekday − 2) ngày.
+- Ghi đè áp tại chỗ: `moved` → sang thứ/khối/phòng bù trong cùng tuần; `cancelled` → giữ ngày gốc kèm cờ nghỉ.
+- Kỳ chưa có `start_date` → `sessions = []`, frontend tự ẩn view tháng/tuần học (bảng lớp lịch tuần vẫn xem được).
+
+**Giao diện TKB sinh viên** (`SchedulePage.jsx`) — 2 chế độ:
+- **Theo tháng** (mặc định): lưới 42 ô Monday-first, điều hướng ‹ ›, chip buổi học màu ổn định theo lớp, highlight hôm nay, chip "Nghỉ" gạch mờ.
+- **Theo tuần học**: cả kỳ chia thành "Tuần 1..N" kèm khoảng dd/mm – dd/mm, gom buổi theo ngày, badge "Dời lịch"/"Nghỉ" + chú thích "(dời từ Thứ X buổi Y)".
+- Bảng lưới tuần cũ đã bỏ; chuyển kỳ bằng dropdown, cả 2 view disable khi kỳ chưa có ngày bắt đầu.
 
 ---
 
@@ -154,8 +188,8 @@ Pipeline nằm trong chính codebase này, chia 2 nửa: **offline** (`src/inges
 **Offline — build vector store** (`scripts/rebuild_vector_store.py`, output: `backend/vectorstore/`):
 
 1. **Loader**: đọc Sổ tay sinh viên (DOCX) → tách cấu trúc Phần / Chương / Mục / Điều (kèm số trang).
-2. **Chunker — semantic chunking theo cấu trúc văn bản pháp quy**: mỗi Điều là 1 chunk; điều dài cắt theo khoản/điểm, mục tiêu ~400 token, **overlap ~88 token** (gối đầu để không mất ngữ cảnh ở mép chunk); section nhỏ không có Điều được gộp vào chunk liền trước. Mỗi chunk gắn **header ngữ cảnh** "Phần > Chương > Mục > Điều" và metadata phân cấp (`phan/chuong/muc/dieu/khoan/so_trang`) + **chú thích viết tắt** (VD: "HB KKHT" → "học bổng khuyến khích học tập") để embedding khớp cả câu hỏi dùng tên đầy đủ.
-3. **Embedding**: Voyage AI (mặc định `voyage-4`), `input_type="document"`, batch 10 text/request, retry backoff cho 429/5xx.
+2. **Chunker — semantic chunking theo cấu trúc văn bản pháp quy**: mỗi Điều là 1 chunk; điều dài cắt theo khoản/điểm, mục tiêu ~400 token, **overlap ~88 token** (gối đầu để không mất ngữ cảnh ở mép chunk); section nhỏ không có Điều được gộp vào chunk liền trước. Quy đổi token theo ~1.7 ký tự/token: chunk ngắn hơn **280 ký tự (~165 token)** bị gộp, mục tiêu **680 ký tự (~400 token)**, dài hơn **850 ký tự (~500 token)** thì chia tiếp; header ngữ cảnh tối đa **350 ký tự**. Mỗi chunk gắn **header ngữ cảnh** "Phần > Chương > Mục > Điều" và metadata phân cấp (`phan/chuong/muc/dieu/khoan/so_trang`) + **chú thích viết tắt** (VD: "HB KKHT" → "học bổng khuyến khích học tập") để embedding khớp cả câu hỏi dùng tên đầy đủ.
+3. **Embedding**: Voyage AI (mặc định `voyage-4`), vector **1024 chiều**, `input_type="document"`, batch 10 text/request, retry backoff cho 429/5xx.
 4. **Lưu**: ChromaDB PersistentClient, collection `quy_che`, metadata `embedding_model` ghi lại model đã build — khi truy vấn mà `VOYAGE_MODEL` hiện tại khác model này thì **chặn ngay, yêu cầu rebuild** (mỗi model là một không gian vector riêng, dùng lẫn sẽ ra kết quả sai lệch mà không báo lỗi).
 
 **Online — luồng trả lời 6 bước:**
@@ -178,24 +212,32 @@ Vector store dựng sẵn và commit trong repo — deploy không cần chạy l
 ### 5.2. AI tư vấn đăng ký học phần
 
 **Input cần chuẩn bị trước khi gọi AI:**
-- Danh sách học phần sinh viên đã học và điểm đạt (query từ bảng Grade/Enrollment)
-- Danh sách lớp học phần đang mở kỳ tới (query từ CourseClass)
+- Danh sách học phần sinh viên đã học và điểm đạt / chưa đạt (query từ bảng Grade/Enrollment)
+- Danh sách lớp học phần đang mở kỳ tới — mỗi lớp kèm `time_slot {weekday, block, room}`, số chỗ còn lại, mã tiên quyết
 - Điều kiện tiên quyết của từng học phần (query từ Prerequisite)
+- Kết quả check eligibility tất định cho từng lớp: cờ `eligible` + `eligibility_note` (kể cả cảnh báo trùng lịch với lớp đã đăng ký)
 
 **Luồng xử lý (hybrid rules + AI):**
-1. Backend tự truy vấn DB lấy 3 nhóm dữ liệu trên (KHÔNG để AI tự "đoán" — AI chỉ suy luận trên dữ liệu thật được cung cấp; payload chỉ chứa dữ liệu của đúng sinh viên được yêu cầu).
+1. Backend tự truy vấn DB lấy các nhóm dữ liệu trên (KHÔNG để AI tự "đoán" — AI chỉ suy luận trên dữ liệu thật được cung cấp; payload chỉ chứa dữ liệu của đúng sinh viên được yêu cầu).
 2. **Rule tất định chạy TRƯỚC**: `check_enrollment_eligibility` lọc trùng lịch, tiên quyết chưa đạt, hết chỗ → mỗi lớp mở kèm cờ `eligible` + lý do.
-3. Đưa vào prompt dạng JSON có cấu trúc, ép LLM trả về **JSON theo schema** (`overview`, `recommended[]`, `warnings[]`, `suggestions[]`, `notes`).
-4. **Validate output phía server**: chỉ chấp nhận recommendation có `course_class_id` nằm trong danh sách lớp thực sự đang mở — không tin output AI. LLM lỗi → **fallback**: trả danh sách lớp đủ điều kiện (không có AI), gắn cờ `fallback=true`.
+3. Đưa vào prompt dạng JSON có cấu trúc, ép LLM trả về **JSON theo schema** (`overview`, `recommended[]`, `warnings[]`, `suggestions[]`, `notes`). Prompt có 2 quy tắc trình bày: (a) nhắc lịch học phải quy đổi sang nhãn tiếng Việt ("sáng Thứ 3", không dùng key `morning`/số thứ); (b) viết văn thuần, CẤM markdown (`**in đậm**`, gạch đầu dòng, tiêu đề #).
+4. **Validate + vệ sinh output phía server**: chỉ chấp nhận recommendation có `course_class_id` nằm trong danh sách lớp thực sự đang mở — không tin output AI; mọi chuỗi trả về đều qua `_plain()` gỡ sạch dấu `**` còn sót. LLM lỗi → **fallback**: trả danh sách lớp đủ điều kiện (không có AI), gắn cờ `fallback=true`.
 5. **Ràng buộc quan trọng:** AI chỉ gợi ý, KHÔNG tự động đăng ký thay. Sinh viên vẫn phải bấm xác nhận đăng ký qua endpoint `/enrollments` (được server validate lại điều kiện tiên quyết một lần nữa, không tin tưởng hoàn toàn output của AI).
+6. **UI panel tư vấn** (`RegistrationPage.jsx`): nhận xét/gợi ý render qua ReactMarkdown (an toàn hai chiều nếu model vẫn lén định dạng); mỗi lớp được đề xuất kèm **chip lịch học cố định** (thứ · khối · tiết · phòng) + số tín chỉ để sinh viên thấy xung đột/tiện lợi lịch ngay tại thẻ mà không phải dò xuống danh sách lớp bên dưới.
 
 ### 5.3. AI tóm tắt kết quả học tập
 - Input: toàn bộ điểm (total_score) của sinh viên theo từng kỳ + GPA hệ 4 tính theo tín chỉ (chỉ HP `counted_in_gpa`, không lấy trung bình đơn giản).
-- Luồng giống 5.2: dựng payload theo kỳ (điểm trung bình kỳ, HP điểm thấp dưới ngưỡng đạt) → prompt → JSON `{summary, warnings, suggestions}`; LLM lỗi → fallback `summary=null`.
+- Luồng giống 5.2: dựng payload theo kỳ (điểm trung bình kỳ, HP điểm thấp dưới ngưỡng đạt) → prompt → JSON `{summary, warnings, suggestions}`; LLM lỗi → fallback `summary=null`. Prompt + server đều cấm markdown như 5.2.
 - Quyền: chính sinh viên xem của mình, hoặc advisor phụ trách lớp hành chính của sinh viên đó.
-- Output: đoạn văn tóm tắt xu hướng học tập (tăng/giảm điểm trung bình theo kỳ), cảnh báo học phần điểm thấp, gợi ý kế hoạch cải thiện chung chung (không thay thế tư vấn chính thức của cố vấn học tập).
+- Output: đoạn văn tóm tắt xu hướng học tập (tăng/giảm điểm trung bình theo kỳ), cảnh báo học phần điểm thấp, gợi ý kế hoạch cải thiện chung chung (không thay thế tư vấn chính thức của cố vấn học tập). Kèm `stats` do server tự tính (GPA hệ 4, số kỳ) hiển thị cạnh nhận xét AI.
 
-### 5.4. Thuật toán & kỹ thuật đã ứng dụng (tóm tắt)
+### 5.4. AI nhận xét tổng quan lớp hành chính (cho cố vấn)
+- Input là **SỐ LIỆU TỔNG HỢP của cả lớp** — quy mô, GPA TB hệ 4/hệ 10, khoảng cách điểm cao–thấp, phân bổ rủi ro, tín chỉ tích lũy TB, số SV đi lên/đi xuống. Prompt KHÔNG chứa dữ liệu riêng của bất kỳ sinh viên nào (kể cả mã giả/tên/MSSV).
+- **Mức rủi ro học vụ do RULE server quyết định** (`RISK_GPA_HIGH/MEDIUM`, ngưỡng nợ môn, xu hướng điểm giảm — không để AI tự chấm): gpa4 < 2.0 hoặc nợ ≥ 3 môn → cao; gpa4 < 2.5 hoặc có nợ / giảm > 1.0 điểm → trung bình.
+- Prompt → JSON `{summary, strengths[], weaknesses[], suggestions[]}` — quy tắc bắt buộc: chỉ nhận xét mức toàn lớp, không suy đoán cá nhân ("một bạn", "SV A"); viết thuần không markdown.
+- LLM lỗi → fallback với `summary=null` nhưng vẫn trả `stats` đầy đủ. UI hiển thị stats thật song song nhận xét AI.
+
+### 5.5. Thuật toán & kỹ thuật đã ứng dụng (tóm tắt)
 
 | Nhóm | Kỹ thuật | Áp dụng |
 |---|---|---|
@@ -208,6 +250,8 @@ Vector store dựng sẵn và commit trong repo — deploy không cần chạy l
 | LLM | Fallback chain + retry backoff | OpenRouter → Gemini; lỗi 429/5xx retry 2 lần (1s, 2s), lỗi client không retry |
 | Hội thoại | Sliding window (3 lượt) + LRU (200 session) | Lịch sử chatbot theo session |
 | Nghiệp vụ | Hybrid rules + AI | Điều kiện đăng ký tính bằng thuật toán tất định trước, AI chỉ xếp hạng/giải thích trên tập đã lọc |
+| Nghiệp vụ | Quy đổi lịch cố định → buổi có ngày cụ thể | Tuần 1 = tuần chứa `start_date` (chuẩn hóa thứ Hai), buổi seq = tuần seq; ghi đè dời/nghỉ áp tại chỗ — 1 hàm duy nhất `expand_class_sessions` cho mọi view |
+| Nghiệp vụ | Sanitize output LLM (`_plain`) | Gỡ sạch dấu `**` model tự thêm dù prompt cấm — UI không bao giờ hiện markdown raw |
 | Vận hành | Warm-up + singleton + kiểm tra nhất quán vector space | ChromaDB mở nền lúc khởi động; chặn collection build bằng model khác cấu hình |
 
 ---
@@ -470,6 +514,7 @@ ql_daotao/
 │   │   │   ├── enrollment_service.py   # logic kiểm tra điều kiện tiên quyết, trùng lịch
 │   │   │   ├── course_service.py       # nghiệp vụ học phần/lớp học phần
 │   │   │   ├── grade_service.py        # tính total_score, GPA, quy đổi điểm chữ/hệ 4
+│   │   │   ├── schedule_service.py     # quy đổi lịch cố định + ghi đè buổi → buổi học có ngày cụ thể (TKB tháng/tuần)
 │   │   │   ├── ai_service.py           # dựng payload tư vấn từ DB + validate output AI
 │   │   │   ├── prompts.py              # template prompt cho course-advice/study-summary
 │   │   │   ├── llm_service.py          # gọi LLM API (OpenRouter → fallback Gemini)
@@ -580,6 +625,49 @@ def check_enrollment_eligibility(db, student_id: int, course_class_id: int) -> t
     return True, "Hợp lệ"
 ```
 
+**Chống race condition sĩ số (TOCTOU) — 3 lớp phòng thủ:**
+
+Kiểm tra sĩ số rồi mới chèn bản ghi là 2 bước rời nhau (check-then-act). Nếu 2 sinh viên bấm đăng ký **chỗ cuối cùng** cùng lúc:
+
+| Thời điểm | Request A | Request B | Hậu quả |
+|---|---|---|---|
+| t1 | Đếm sĩ số = max−1 ✅ | | |
+| t2 | *(chưa kịp commit)* | Đếm sĩ số = max−1 ✅ | B không thấy dữ liệu chưa commit của A |
+| t3 | INSERT + commit | INSERT + commit | Lớp nhận **max+1 SV — vượt sĩ số** |
+
+Đây là lỗi **TOCTOU (Time-Of-Check To-Time-Use)** — chỉ xảy ra khi 2 request chạy thật sự song song nên test chức năng thông thường không bao giờ bắt được. Xử lý bằng 3 lớp phòng thủ trong `create_enrollment`:
+
+```python
+def create_enrollment(db, student_id, course_class_id):
+    # Lớp 1 — khóa bi quan cấp dòng: giành quyền sở hữu dòng lớp TRƯỚC
+    db.execute(select(CourseClass)
+               .where(CourseClass.id == course_class_id)
+               .with_for_update())
+    ok, message = check_enrollment_eligibility(...)   # đếm sĩ số BÊN TRONG lock
+    if not ok:
+        db.rollback()   # nhả lock sớm, không giữ oan suốt vòng đời response
+        raise HTTPException(400, detail=message)
+    db.add(enrollment)
+    try:
+        db.commit()     # commit cũng là lúc nhả lock
+    except IntegrityError:
+        # Lớp 2+3 — unique constraint chặn tại DB, bắt lỗi kỹ thuật
+        # đổi thành lỗi nghiệp vụ thay vì nổ 500
+        db.rollback()
+        raise HTTPException(400, detail="Đã đăng ký lớp học phần này rồi")
+```
+
+1. **Khóa bi quan cấp dòng** (`SELECT ... FOR UPDATE` trên dòng `CourseClass`): request nào muốn đăng ký lớp X phải giành quyền sở hữu dòng lớp X trước; request sau đứng chờ đến khi request trước commit rồi mới đếm được sĩ số MỚI → không bao giờ vượt `max_size`. Chỉ các request CÙNG một lớp mới xếp hàng — đăng ký lớp khác vẫn song song đầy đủ nên hiệu năng gần như không đổi. Chọn khóa cấp dòng thay vì khóa cả bảng hay isolation Serializable vì nhẹ nhất mà đủ đúng.
+2. **Ràng buộc DB làm lưới an toàn**: unique constraint `uq_enrollment_student_class(student_id, course_class_id)` chặn trùng đăng ký ngay tại tầng database, kể cả khi 2 request CÙNG sinh viên đua nhau lọt qua pre-check.
+3. **Lỗi kỹ thuật → lỗi nghiệp vụ**: `IntegrityError` được bắt và trả `400 "Đã đăng ký lớp học phần này rồi"` thay vì `500 Internal Server Error`.
+
+Ghi chú môi trường: SQLite (test/dev) bỏ qua cụm `FOR UPDATE` khỏi SQL nhưng vốn khóa cả DB khi ghi nên ngữ nghĩa test vẫn đúng; PostgreSQL (Supabase production) thực thi lock đúng nghĩa.
+
+**Kiểm chứng bằng test** (2 bài trong `tests/test_enrollments.py`, toàn bộ suite 167/167 pass):
+
+- `test_create_enrollment_locks_class_row` — gắn event listener vào Session để **bắt nguyên văn statement ORM** mà `create_enrollment` thực thi trong một request POST thật, biên dịch statement sang SQL PostgreSQL và khẳng định có chữ `FOR UPDATE`. Phải xác minh ở tầng câu lệnh vì SQLite đã xóa cụm này khỏi SQL chạy thật.
+- `test_duplicate_insert_race_returns_400_not_500` — tái tạo đúng "khoảng hở đua" bằng cách vá pre-check luôn trả "Hợp lệ" dù bản ghi đã tồn tại, buộc luồng đi vào nhánh `IntegrityError` → khẳng định response là 400 kèm đúng thông điệp tiếng Việt.
+
 ### 9.3. Service tính điểm tổng kết (`services/grade_service.py`)
 ```python
 def update_process_score(db, enrollment_id: int, score: float, lecturer_id: int):
@@ -689,6 +777,7 @@ async def regulation_chat(body: RegulationChatRequest, user=Depends(get_current_
 - Đã code endpoint `/ai/course-advice`, `/ai/study-summary`.
 - Viết test case: thiếu điều kiện tiên quyết, trùng lịch, lecturer cố nhập điểm thi (kỳ vọng bị chặn 403), training_office cố nhập điểm quá trình (kỳ vọng bị chặn hoặc cho phép tùy chính sách — cần chốt rõ).
 - Tối ưu prompt qua nhiều vòng, so sánh chất lượng câu trả lời trước/sau.
+- Đã hoàn thành trong giai đoạn này: rework thời khóa biểu (lịch cố định thứ/khối/phòng + ghi đè từng buổi + `academic_term.start_date` → TKB tháng & tuần học cho sinh viên), nhận xét AI tổng quan lớp hành chính cho cố vấn, chuẩn hóa seed data demo (kể cả buổi dời/nghỉ).
 
 **Giai đoạn 4 — Hoàn thiện & triển khai:**
 - Deploy backend (Render/Railway), frontend (Vercel/Netlify), DB (Supabase — connection string qua `SUPABASE_DB_URL`).

@@ -23,14 +23,18 @@ export default function Header({ onMenuClick }) {
         <MenuIcon size={20} />
       </button>
 
-      <h1 className="text-2xl font-semibold truncate">{meta.title}</h1>
+      {/* min-w-0 BẮT BUỘC: không có nó thì flex con không co thấp hơn nội dung,
+          truncate thành vô dụng → tiêu đề dài đẩy nút hành động tràn ngang màn
+          hình điện thoại (chỉ trang admin có cả tiêu đề dài + nút "+ ..."). */}
+      <h1 className="text-2xl font-semibold truncate min-w-0">{meta.title}</h1>
 
       {meta.action && (
         <div className="ml-auto shrink-0">
           <Link to={meta.action.to} state={meta.action.state}>
-            <Button variant="primary">
+            <Button variant="primary" aria-label={meta.action.label}>
               <Plus size={16} />
-              {meta.action.label}
+              {/* Dưới 640px chỉ còn icon: tiêu đề dài nhất + nút vẫn vừa ~320px */}
+              <span className="hidden sm:inline">{meta.action.label}</span>
             </Button>
           </Link>
         </div>

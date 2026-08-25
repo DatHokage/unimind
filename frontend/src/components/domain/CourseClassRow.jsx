@@ -1,11 +1,13 @@
 import { Row, Cell, NumCell, Badge } from "../ui";
-import { fmtTerm, fmtSchedule } from "../../utils/format";
+import { fmtTerm, fmtSlot } from "../../utils/format";
 
-/** Nhãn trạng thái lớp học phần. */
+/** Nhãn trạng thái lớp học phần: open → closed → completed (khóa vĩnh viễn). */
 export const classStatusBadge = (status) =>
   status === "open"
     ? { label: "Mở đăng ký", tone: "success" }
-    : { label: "Đóng", tone: "neutral" };
+    : status === "completed"
+      ? { label: "Hoàn thành", tone: "info" }
+      : { label: "Đóng", tone: "neutral" };
 
 /**
  * Hàng lớp học phần chuẩn hóa — dùng chung cho "Lớp học phần của tôi"
@@ -19,10 +21,11 @@ export function CourseClassRow({ cls, showLecturer = false, stt = null, children
   return (
     <Row>
       {stt}
-      <Cell className="font-medium">{cls.course_code}</Cell>
+      <Cell className="font-medium whitespace-nowrap">{cls.code}</Cell>
       <Cell className="whitespace-normal min-w-40">{cls.course_name}</Cell>
+      <NumCell>{cls.credits ?? "—"}</NumCell>
       <Cell>{fmtTerm(cls.year, cls.term)}</Cell>
-      <Cell className="text-xs whitespace-normal">{fmtSchedule(cls.schedule)}</Cell>
+      <Cell className="text-xs whitespace-normal">{fmtSlot(cls)}</Cell>
       {showLecturer && <Cell>{cls.lecturer_name ?? "—"}</Cell>}
       <NumCell>
         {cls.enrolled_count}/{cls.max_size}

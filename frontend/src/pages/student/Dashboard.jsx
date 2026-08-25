@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { CalendarDays, CalendarClock, MessageCircle, ChevronRight } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
-import { Card, DataTable, Cell, Row, Spinner, Alert, StatCard, Badge } from "../../components/ui";
+import { Card, DataTable, Cell, Row, Alert, StatCard, Badge, Skeleton, SkeletonCard } from "../../components/ui";
 import { EnrollmentCard, enrollmentStatus } from "../../components/domain/EnrollmentCard";
 import { fmtTerm } from "../../utils/format";
 
@@ -37,7 +37,23 @@ export default function StudentDashboard() {
     })();
   }, [user.student_id]);
 
-  if (loading) return <Spinner />;
+  // Skeleton vẽ ngay khi vào route — FCP/LCP không chờ API trả về
+  if (loading)
+    return (
+      <div className="space-y-6">
+        <div>
+          <Skeleton className="h-6 w-52" />
+          <Skeleton className="h-4 w-72 mt-2" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {Array.from({ length: 5 }, (_, i) => (
+            <Skeleton key={i} className="h-[86px] rounded-lg" />
+          ))}
+        </div>
+        <SkeletonCard rows={5} />
+        <SkeletonCard rows={3} />
+      </div>
+    );
   if (error) return <Alert kind="error">{error}</Alert>;
 
   return (

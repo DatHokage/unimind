@@ -12,7 +12,7 @@ export default function SidebarMenuItem({ item, collapsed, onNavigate }) {
       to={item.to}
       end={item.end}
       state={item.state}
-      title={collapsed ? item.label : undefined}
+      aria-label={collapsed ? item.label : undefined}
       onClick={onNavigate}
       className="relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-secondary hover:bg-app hover:text-primary transition-colors duration-150"
     >

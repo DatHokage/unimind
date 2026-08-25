@@ -8,23 +8,12 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Course, CourseClass, Enrollment, Grade, Prerequisite
-
-
-def sessions_overlap(a: dict, b: dict) -> bool:
-    """Hai buổi học trùng nhau nếu cùng thứ và khoảng tiết (inclusive) giao nhau."""
-    return (
-        a.get("weekday") == b.get("weekday")
-        and a.get("start_period", 0) <= b.get("end_period", 0)
-        and b.get("start_period", 0) <= a.get("end_period", 0)
-    )
-
-
-def schedule_conflicts(s1: list[dict], s2: list[dict]) -> bool:
-    return any(sessions_overlap(a, b) for a in s1 for b in s2)
+from app.services.course_service import get_class_code
 
 
 def get_passed_course_ids(db: Session, student_id: int) -> set[int]:
@@ -76,7 +65,9 @@ def check_enrollment_eligibility(db: Session, student_id: int, course_class_id: 
             )
             return False, f"Còn thiếu điều kiện tiên quyết: {', '.join(missing_codes)}"
 
-    # 3. Kiểm tra trùng lịch với các lớp đã đăng ký trong cùng kỳ
+    # 3. Kiểm tra trùng lịch với các lớp đã đăng ký trong cùng kỳ.
+    #    Buổi học chiếm đúng 1 khối giờ chuẩn (sáng/chiều/tối, không cắt giữa khối)
+    #    nên trùng lịch ⇔ cùng kỳ + cùng thứ + cùng khối giờ.
     my_enrollments = db.scalars(
         select(Enrollment).where(Enrollment.student_id == student_id)
     ).all()
@@ -84,9 +75,14 @@ def check_enrollment_eligibility(db: Session, student_id: int, course_class_id: 
         other = e.course_class
         if other is None or other.id == course_class.id:
             continue
-        if other.year == course_class.year and other.term == course_class.term:
-            if schedule_conflicts(course_class.schedule or [], other.schedule or []):
-                return False, f"Trùng lịch với lớp {other.course.code if other.course else other.id}"
+        same_slot = (
+            other.year == course_class.year
+            and other.term == course_class.term
+            and other.weekday == course_class.weekday
+            and other.block == course_class.block
+        )
+        if same_slot:
+            return False, f"Trùng lịch với lớp {get_class_code(db, other)}"
 
     # 4. Kiểm tra đã đăng ký lớp này chưa
     duplicate = db.scalar(
@@ -102,9 +98,19 @@ def check_enrollment_eligibility(db: Session, student_id: int, course_class_id: 
 
 
 def create_enrollment(db: Session, student_id: int, course_class_id: int) -> Enrollment:
+    # Khóa dòng lớp học phần đến khi commit (SELECT ... FOR UPDATE — mục 9.2):
+    # 2 request cùng giành chỗ cuối phải xếp hàng tuần tự, request sau đếm được
+    # sĩ số MỚI sau khi request trước commit → không bao giờ vượt max_size.
+    # SQLite bỏ qua FOR UPDATE (khóa cả DB khi ghi nên test vẫn đúng ngữ nghĩa).
+    db.execute(
+        select(CourseClass).where(CourseClass.id == course_class_id).with_for_update()
+    )
+
     ok, message = check_enrollment_eligibility(db, student_id, course_class_id)
     if not ok:
+        db.rollback()  # nhả FOR UPDATE sớm, không giữ lock qua vòng đời request
         raise HTTPException(status_code=400, detail=message)
+
     enrollment = Enrollment(
         student_id=student_id,
         course_class_id=course_class_id,
@@ -112,6 +118,12 @@ def create_enrollment(db: Session, student_id: int, course_class_id: int) -> Enr
         status="approved",
     )
     db.add(enrollment)
-    db.commit()
+    try:
+        db.commit()  # commit cũng nhả lock ở trên
+    except IntegrityError:
+        # 2 request CÙNG sinh viên đua nhau lọt qua pre-check → unique constraint
+        # uq_enrollment_student_class chặn ở DB; trả lỗi nghiệp vụ thay vì 500.
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Đã đăng ký lớp học phần này rồi")
     db.refresh(enrollment)
     return enrollment

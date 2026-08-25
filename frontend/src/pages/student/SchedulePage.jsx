@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarDays, List, ListFilter, Clock } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, List, ListFilter } from "lucide-react";
 import api, { errMsg } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
-import { Card, DataTable, Cell, NumCell, Row, Button, Spinner, Alert, EmptyState } from "../../components/ui";
-import { WEEKDAYS, WEEKDAY_LABELS, PERIODS, PERIOD_TIMES, fmtPeriodRange, fmtSchedule, fmtTerm } from "../../utils/format";
+import { Badge, Card, DataTable, Cell, NumCell, Row, Button, Spinner, Alert, EmptyState } from "../../components/ui";
+import { WEEKDAYS, WEEKDAY_LABELS, PERIOD_TIMES, TIME_BLOCKS, SESSION_STATUS, fmtSlot, fmtTerm } from "../../utils/format";
 import { INPUT_CLS } from "../../utils/forms";
 
 /** Bảng màu nhất quán cho từng lớp học phần trong lưới (đủ 9 lớp/kỳ). */
@@ -26,188 +26,224 @@ function paletteOf(cls, classes) {
   return CLASS_PALETTES[(idx >= 0 ? idx : 0) % CLASS_PALETTES.length];
 }
 
-/** Phân buổi trong ngày: mỗi buổi tối đa 5 tiết. */
-const SESSIONS = [
-  { key: "morning", label: "Sáng", from: 1, to: 5 },
-  { key: "afternoon", label: "Chiều", from: 6, to: 10 },
-  { key: "evening", label: "Tối", from: 11, to: 15 },
-];
+// ---------- Tiện ích ngày (ISO yyyy-mm-dd ↔ Date địa phương) ----------
 
-/** Template cột dùng chung cho header và thân lưới: [nhãn buổi][cột tiết][7 thứ]. */
-const GRID_COLS = "26px 72px repeat(7, minmax(104px, 1fr))";
-const ROW_H = 56; // px — chiều cao mỗi hàng tiết
+const isoOf = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-/** Chỉ số cột grid của 1 thứ (sau cột nhãn buổi + cột tiết). */
-const colOf = (wd) => WEEKDAYS.indexOf(wd) + 3;
+const parseISO = (s) => {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
 
-/** Gom buổi học theo thứ trong tuần: {"2": [{cls, session}, ...]}. */
-function groupByWeekday(classes) {
-  const days = {};
-  for (const cls of classes) {
-    for (const s of cls.schedule ?? []) {
-      if (!s.weekday || !s.start_period || !s.end_period) continue;
-      (days[s.weekday] ??= []).push({ cls, session: s });
-    }
-  }
-  for (const list of Object.values(days)) {
-    list.sort((a, b) => a.session.start_period - b.session.start_period);
-  }
-  return days;
-}
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 
-/** Khối học phần trong lưới tuần: kéo đúng số tiết start→end, hẹp hơn cột ngày và căn giữa. */
-function SessionBlock({ cls, session, classes }) {
-  const pal = paletteOf(cls, classes);
-  const range = fmtPeriodRange(session.start_period, session.end_period);
-  const short = session.end_period - session.start_period < 2; // ≤2 tiết: chỗ chỉ đủ 2 dòng
+/** Vị trí trong tuần theo thứ Việt Nam (thứ Hai = 0 … Chủ Nhật = 6). */
+const mondayIndex = (d) => (d.getDay() + 6) % 7;
+
+const fmtDM = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+/** Ô ngày trong lịch tháng: số ngày + các chip buổi học (tối đa 3, còn lại gộp "+n"). */
+function MonthCell({ date, inMonth, events, classes, isToday }) {
+  const visible = events.slice(0, 3);
+  const rest = events.length - visible.length;
   return (
     <div
-      className={`h-full overflow-hidden rounded-md border-l-[3px] px-2 py-1 text-left ${pal.cell}`}
-      title={`${cls.course_code} — ${cls.course_name}${range ? ` · ${range}` : ""}${session.room ? ` · ${session.room}` : ""}`}
+      className={`min-h-[76px] p-1 ${inMonth ? "bg-surface" : "bg-app/60"} ${isToday ? "ring-1 ring-primary ring-inset" : ""}`}
     >
-      <div className="text-[13px] font-semibold leading-tight truncate">
-        {cls.course_code}
-        {cls.credits != null && (
-          <span className="ml-1 text-[11px] font-normal text-secondary">({cls.credits}TC)</span>
-        )}
+      <div className="flex items-center justify-between px-0.5">
+        <span className={`text-[11px] num font-semibold ${inMonth ? "" : "text-secondary/50"} ${isToday ? "text-primary" : ""}`}>
+          {date.getDate()}
+        </span>
+        {isToday && <span className="text-[9px] font-semibold text-primary">Hôm nay</span>}
       </div>
-      <div className={`text-xs ${short ? "truncate" : "line-clamp-2"}`}>{cls.course_name}</div>
-      {!short && (
-        <div className="text-[11px] text-secondary num whitespace-nowrap truncate">
-          {range && (
-            <span className="inline-flex items-center gap-0.5">
-              <Clock size={10} /> {range}
-            </span>
-          )}
-          {session.room ? ` · ${session.room}` : ""}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Bảng theo tuần (desktop) — CSS Grid:
- * - Cột: [Buổi][Tiết][7 thứ]; hàng: header + 3 buổi × 5 tiết.
- * - Khối học phần đặt bằng grid-row động: (2 + start_period) / (3 + end_period)
- *   → chiều cao tự khớp số tiết, không chồng lấn nếu lịch không trùng (backend đã chặn).
- */
-function ScheduleGrid({ classes }) {
-  const blocks = [];
-  for (const cls of classes) {
-    for (const s of cls.schedule ?? []) {
-      if (!s.weekday || !s.start_period || !s.end_period) continue;
-      blocks.push({ cls, session: s, key: `${cls.course_class_id}-${s.weekday}-${s.start_period}` });
-    }
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <div
-        className="grid min-w-[900px] gap-px border border-border bg-border text-sm"
-        style={{
-          gridTemplateColumns: GRID_COLS,
-          gridTemplateRows: `40px repeat(${PERIODS}, minmax(${ROW_H}px, auto))`,
-        }}
-      >
-        {/* Header */}
-        <div className="bg-app px-1 py-2 text-center text-xs font-semibold text-secondary" style={{ gridColumn: "1 / 3" }}>
-          Buổi · Tiết
-        </div>
-        {WEEKDAYS.map((wd, i) => (
-          <div key={wd} className="bg-app px-1 py-2 text-center text-xs font-semibold text-secondary" style={{ gridColumn: i + 3 }}>
-            {WEEKDAY_LABELS[wd]}
-          </div>
-        ))}
-
-        {/* Nhãn buổi + dải giờ từng buổi (cột 1) */}
-        {SESSIONS.map((ss) => (
-          <div
-            key={ss.key}
-            className="flex flex-col items-center justify-center gap-1 bg-app px-0.5 py-2"
-            style={{ gridColumn: 1, gridRow: `${2 + ss.from} / ${3 + ss.to}` }}
-          >
-            <span className="text-[11px] font-semibold leading-tight text-secondary">
-              Buổi
-              <br />
-              {ss.label.toLowerCase()}
-            </span>
-            <span className="text-[10px] leading-tight text-secondary num text-center">
-              {PERIOD_TIMES[ss.from].start}–{PERIOD_TIMES[ss.to].end}
-            </span>
-          </div>
-        ))}
-
-        {/* Cột tiết: mỗi tiết 1 hàng kèm giờ vào/ra */}
-        {Array.from({ length: PERIODS }, (_, i) => i + 1).map((p) => (
-          <div key={p} className="flex flex-col items-center justify-center bg-app py-1" style={{ gridColumn: 2, gridRow: 2 + p }}>
-            <span className="text-[11px] font-semibold num leading-tight">{p}</span>
-            <span className="text-[10px] text-secondary num leading-tight">
-              {PERIOD_TIMES[p].start}–{PERIOD_TIMES[p].end}
-            </span>
-          </div>
-        ))}
-
-        {/* Ô nền của lưới: 7 thứ × 15 tiết */}
-        {Array.from({ length: PERIODS }, (_, i) => i + 1).map((p) =>
-          WEEKDAYS.map((wd, i) => (
-            <div key={`${wd}-${p}`} className="bg-surface" style={{ gridColumn: i + 3, gridRow: 2 + p }} />
-          ))
-        )}
-
-        {/* Khối học phần: grid-row động theo start/end period, căn giữa và hẹp hơn cột ngày */}
-        {blocks.map(({ cls, session, key }) => {
-          const col = colOf(session.weekday);
-          if (!col) return null;
+      <div className="space-y-0.5 mt-0.5">
+        {visible.map((s) => {
+          const pal = paletteOf(s, classes);
+          const cancelled = s.status === "cancelled";
+          const st = SESSION_STATUS[s.status];
           return (
             <div
-              key={key}
-              className="my-0.5 w-[86%] max-w-[150px] justify-self-center"
-              style={{ gridColumn: col, gridRow: `${2 + session.start_period} / ${3 + session.end_period}` }}
+              key={`${s.course_class_id}-${s.seq}`}
+              className={`rounded border-l-2 px-1 py-0.5 text-[10px] leading-tight ${pal.cell} ${cancelled ? "opacity-50 line-through" : ""}`}
+              title={`${s.course_code} — ${s.course_name} · tiết ${s.start_period}–${s.end_period}${s.room ? ` · ${s.room}` : ""}${
+                st ? ` · ${st.label}` : ""
+              }`}
             >
-              <SessionBlock cls={cls} session={session} classes={classes} />
+              <span className="font-semibold">{s.course_code}</span>{" "}
+              <span className="text-secondary num">{PERIOD_TIMES[s.start_period]?.start}</span>
+              {s.room && <span className="block truncate text-secondary">{s.room}</span>}
             </div>
           );
         })}
+        {rest > 0 && <div className="text-[10px] text-secondary pl-1">+{rest} buổi khác</div>}
       </div>
     </div>
   );
 }
 
-/** Xem theo ngày (dễ đọc trên điện thoại): mỗi thứ có lịch là 1 block dọc. */
-function DayList({ classes }) {
-  const days = groupByWeekday(classes);
-  const order = WEEKDAYS.filter((wd) => days[wd]?.length);
+/** Lịch theo tháng: điều hướng ‹ ›, ô hôm nay được làm nổi, chip màu theo lớp. */
+function MonthGrid({ sessions, classes }) {
+  const times = sessions.map((s) => parseISO(s.date).getTime());
+  const minTime = times.length ? Math.min(...times) : null;
+  const maxTime = times.length ? Math.max(...times) : null;
+  const now = new Date();
+  // Mặc định mở tháng chứa hôm nay nếu hôm nay nằm trong khoảng có lịch, ngược lại
+  // tháng của buổi đầu tiên. Kỳ chưa có ngày học (sessions rỗng) → mở tháng hiện tại
+  // thay vì Math.min(...[]) = Infinity → con trỏ NaN.
+  const anchor =
+    minTime != null && (now.getTime() < minTime || now.getTime() > maxTime)
+      ? new Date(minTime)
+      : now;
+  const [cursor, setCursor] = useState({ y: anchor.getFullYear(), m: anchor.getMonth() });
+
+  const byDate = useMemo(() => {
+    const map = {};
+    for (const s of sessions) (map[s.date] ??= []).push(s);
+    return map;
+  }, [sessions]);
+
+  // Lưới luôn đủ 6 hàng × 7 cột bắt đầu từ thứ Hai của tuần chứa ngày 1
+  const first = new Date(cursor.y, cursor.m, 1);
+  const gridStart = addDays(first, -mondayIndex(first));
+  const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+  const todayIso = isoOf(new Date());
+
+  const shift = (delta) =>
+    setCursor(({ y, m }) => {
+      const next = new Date(y, m + delta, 1);
+      return { y: next.getFullYear(), m: next.getMonth() };
+    });
+
+  return (
+    <Card padded={false}>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+        <Button variant="ghost" size="sm" onClick={() => shift(-1)} aria-label="Tháng trước">
+          <ChevronLeft size={16} />
+        </Button>
+        <h3 className="text-sm font-semibold num">
+          Tháng {cursor.m + 1} · {cursor.y}
+        </h3>
+        <Button variant="ghost" size="sm" onClick={() => shift(1)} aria-label="Tháng sau">
+          <ChevronRight size={16} />
+        </Button>
+      </div>
+      <div className="overflow-x-auto">
+        <div className="grid min-w-[700px]" style={{ gridTemplateColumns: "repeat(7, minmax(96px, 1fr))" }}>
+          {WEEKDAYS.map((wd) => (
+            <div key={wd} className="bg-app px-1 py-1.5 text-center text-[11px] font-semibold text-secondary border-b border-border">
+              {WEEKDAY_LABELS[wd]}
+            </div>
+          ))}
+          {cells.map((d) => {
+            const iso = isoOf(d);
+            return (
+              <div key={iso} className="border-b border-r border-border last:border-r-0 [&:nth-child(7n)]:border-r-0">
+                <MonthCell
+                  date={d}
+                  inMonth={d.getMonth() === cursor.m}
+                  events={byDate[iso] ?? []}
+                  classes={classes}
+                  isToday={iso === todayIso}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/** Một buổi trong danh sách tuần học — kiểu thẻ giống xem-theo-ngày cũ, kèm trạng thái dời/nghỉ. */
+function WeekSessionRow({ s, cls, classes }) {
+  const pal = paletteOf(s, classes);
+  const cancelled = s.status === "cancelled";
+  const moved = s.status === "moved";
+  const st = SESSION_STATUS[s.status];
+  return (
+    <li className={`flex gap-3 ${cancelled ? "opacity-60" : ""}`}>
+      <div className="w-14 shrink-0 text-right border-r border-border pr-2 num">
+        <div className="text-sm font-semibold leading-tight">{PERIOD_TIMES[s.start_period]?.start ?? "—"}</div>
+        <div className="text-[11px] text-secondary leading-tight">{PERIOD_TIMES[s.end_period]?.end ?? ""}</div>
+      </div>
+      <div className={`min-w-0 flex-1 rounded-md border-l-[3px] px-2.5 py-1.5 ${pal.cell}`}>
+        <div className="flex items-center justify-between gap-2">
+          <span className={`text-[13px] font-semibold ${cancelled ? "line-through" : ""}`}>
+            {s.course_code} — {s.course_name}
+          </span>
+          {st && <Badge tone={st.tone}>{st.label}</Badge>}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-secondary">
+          <span className="num">tiết {s.start_period}–{s.end_period}</span>
+          <span>{WEEKDAY_LABELS[s.weekday]}</span>
+          <span>{s.room || "Chưa xếp phòng"}</span>
+          {moved && cls && cls.weekday !== s.weekday && (
+            <span>(dời từ {WEEKDAY_LABELS[cls.weekday]?.toLowerCase()} {TIME_BLOCKS[cls.block]?.label?.toLowerCase()})</span>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/** Danh sách cả kỳ theo tuần học: "Tuần k · dd/mm – dd/mm" rồi các buổi trong tuần đó. */
+function WeekList({ sessions, startDate, classes }) {
+  const byWeek = useMemo(() => {
+    const map = {};
+    for (const s of sessions) (map[s.week] ??= []).push(s);
+    return map;
+  }, [sessions]);
+
+  const clsById = useMemo(
+    () => Object.fromEntries(classes.map((c) => [c.course_class_id, c])),
+    [classes]
+  );
+  const week1Monday = parseISO(startDate); // backend đảm bảo start_date là thứ Hai tuần 1
+  const maxWeek = Math.max(...sessions.map((s) => s.week));
+
   return (
     <div className="space-y-4">
-      {order.map((wd) => (
-        <section key={wd} className="bg-surface border border-border rounded-lg shadow-sm p-4">
-          <h3 className="text-sm font-semibold mb-3">{WEEKDAY_LABELS[wd]}</h3>
-          <ol className="space-y-2.5">
-            {days[wd].map(({ cls, session }) => {
-              const pal = paletteOf(cls, classes);
-              const range = fmtPeriodRange(session.start_period, session.end_period);
-              return (
-                <li key={`${cls.course_class_id}-${session.start_period}`} className="flex gap-3">
-                  {/* Cột giờ: giờ vào đậm + giờ ra nhỏ */}
-                  <div className="w-14 shrink-0 text-right border-r border-border pr-2 num">
-                    <div className="text-sm font-semibold leading-tight">{range ? range.split("–")[0] : "—"}</div>
-                    <div className="text-[11px] text-secondary leading-tight">{range ? range.split("–")[1] : ""}</div>
-                  </div>
-                  <div className={`min-w-0 flex-1 rounded-md border-l-[3px] px-2.5 py-1.5 ${pal.cell}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[13px] font-semibold">{cls.course_code}</span>
-                      <span className="text-[11px] text-secondary num">tiết {session.start_period}–{session.end_period}</span>
-                    </div>
-                    <div className="text-xs truncate" title={cls.course_name}>{cls.course_name}</div>
-                    <div className="text-xs text-secondary">{session.room || "Chưa xếp phòng"}</div>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-      ))}
+      {Array.from({ length: maxWeek }, (_, i) => i + 1).map((week) => {
+        const monday = addDays(week1Monday, (week - 1) * 7);
+        const list = byWeek[week] ?? [];
+        // Gom theo ngày trong tuần để ra các nhóm "Thứ x · dd/mm"
+        const byDay = {};
+        for (const s of list) (byDay[s.date] ??= []).push(s);
+        return (
+          <section key={week} className="bg-surface border border-border rounded-lg shadow-sm">
+            <header className="flex items-baseline justify-between px-4 py-2.5 border-b border-border bg-app/40 rounded-t-lg">
+              <h3 className="text-sm font-semibold">Tuần {week}</h3>
+              <span className="text-xs text-secondary num">
+                {fmtDM(monday)} – {fmtDM(addDays(monday, 6))}
+              </span>
+            </header>
+            {list.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-secondary">Không có buổi học nào trong tuần này.</p>
+            ) : (
+              <ol className="space-y-2.5 px-4 py-3">
+                {Object.keys(byDay)
+                  .sort()
+                  .map((dateIso) => {
+                    const d = parseISO(dateIso); // parse 1 lần cho cả nhãn thứ + ngày
+                    return (
+                    <li key={dateIso}>
+                      <div className="text-xs font-semibold text-secondary mb-1.5 num">
+                        {WEEKDAY_LABELS[WEEKDAYS[mondayIndex(d)]]} · {fmtDM(d)}
+                      </div>
+                      <ol className="space-y-2.5">
+                        {byDay[dateIso].map((s) => (
+                          <WeekSessionRow key={`${s.course_class_id}-${s.seq}`} s={s} cls={clsById[s.course_class_id]} classes={classes} />
+                        ))}
+                      </ol>
+                    </li>
+                    );
+                  })}
+              </ol>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -217,7 +253,7 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true);
   const [schedule, setSchedule] = useState(null);
   const [selected, setSelected] = useState(""); // "year-term" — rỗng = kỳ mới nhất
-  const [view, setView] = useState("grid");
+  const [view, setView] = useState("month"); // month | weeks
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -241,9 +277,24 @@ export default function SchedulePage() {
 
   const classes = schedule?.classes ?? [];
   const terms = schedule?.terms ?? [];
+  const datedSessions = schedule?.sessions ?? []; // có ngày cụ thể (cần academic_term)
+  const hasDated = datedSessions.length > 0;
   const totalCredits = classes.reduce((s, c) => s + (c.credits ?? 0), 0);
   // Kỳ đang hiển thị: ưu tiên kỳ người dùng chọn, nếu chưa chọn thì kỳ backend trả về (mới nhất)
   const termValue = selected || (schedule?.year ? `${schedule.year}-${schedule.term}` : "");
+
+  const VIEW_BTN = (key, icon, label) => (
+    <Button
+      variant={view === key ? "secondary" : "ghost"}
+      size="sm"
+      onClick={() => setView(key)}
+      disabled={!hasDated}
+      title={!hasDated ? "Kỳ học chưa có ngày bắt đầu" : undefined}
+    >
+      {icon}
+      {label}
+    </Button>
+  );
 
   return (
     <div className="space-y-4">
@@ -272,14 +323,8 @@ export default function SchedulePage() {
           </select>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant={view === "grid" ? "secondary" : "ghost"} size="sm" onClick={() => setView("grid")}>
-            <CalendarDays size={14} />
-            Theo tuần
-          </Button>
-          <Button variant={view === "list" ? "secondary" : "ghost"} size="sm" onClick={() => setView("list")}>
-            <List size={14} />
-            Theo ngày
-          </Button>
+          {VIEW_BTN("month", <CalendarDays size={14} />, "Theo tháng")}
+          {VIEW_BTN("weeks", <List size={14} />, "Theo tuần học")}
         </div>
       </div>
 
@@ -302,14 +347,16 @@ export default function SchedulePage() {
         <>
           <p className="text-sm text-secondary num">
             {fmtTerm(schedule.year, schedule.term)} · {classes.length} lớp học phần · {totalCredits} tín chỉ
+            {hasDated && schedule.start_date && <> · bắt đầu {fmtDM(parseISO(schedule.start_date))}</>}
           </p>
 
-          {view === "grid" ? (
-            <Card padded={false}>
-              <ScheduleGrid classes={classes} />
-            </Card>
+          {/* key theo kỳ: đổi kỳ là remount → MonthGrid chạy lại logic anchor
+              (hôm nay nếu trong khoảng lịch, ngược lại buổi đầu) thay vì đứng
+              yên ở tháng đang xem của kỳ cũ */}
+          {view === "month" ? (
+            <MonthGrid key={termValue} sessions={datedSessions} classes={classes} />
           ) : (
-            <DayList classes={classes} />
+            <WeekList sessions={datedSessions} startDate={schedule.start_date} classes={classes} />
           )}
 
           {/* Chú thích màu theo lớp — nhận diện nhanh khi nhiều buổi trùng màu */}
@@ -345,11 +392,9 @@ export default function SchedulePage() {
                   <Cell className="font-medium">{c.course_code}</Cell>
                   <Cell className="whitespace-normal min-w-40">{c.course_name}</Cell>
                   <NumCell>{c.credits ?? "—"}</NumCell>
-                  <Cell className="text-xs whitespace-normal min-w-56">{fmtSchedule(c.schedule)}</Cell>
+                  <Cell className="text-xs whitespace-normal min-w-56">{fmtSlot(c)}</Cell>
                   <Cell>{c.lecturer_name ?? "—"}</Cell>
-                  <Cell className="text-xs">
-                    {[...new Set((c.schedule ?? []).map((s) => s.room).filter(Boolean))].join(", ") || "—"}
-                  </Cell>
+                  <Cell className="text-xs">{c.room ?? "—"}</Cell>
                 </Row>
               )}
             />

@@ -1,0 +1,3 @@
+# UniMind — cho phép bot quét toàn bộ (SPA; các trang dữ liệu tự redirect về /login khi chưa đăng nhập)
+User-agent: *
+Allow:

@@ -1,4 +1,3 @@
-import httpx
 import pytest
 
 from app.services.llm_service import LLMError, extract_json
@@ -235,7 +234,7 @@ def test_course_advice_fallback_when_no_llm(client, db, make_user, make_student,
     monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "")
 
     student = make_student(db)
-    cc = make_course_class(db, make_course(db))
+    make_course_class(db, make_course(db))  # có lớp để advice không rỗng
     h = make_user(db, role="student", student=student)
     resp = client.post("/ai/course-advice", json={"student_id": student.id}, headers=h)
     assert resp.status_code == 200

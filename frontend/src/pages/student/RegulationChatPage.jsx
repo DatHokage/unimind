@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Bot, ChevronDown, Cpu, Paperclip, RotateCcw, Send } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import api, { errMsg } from "../../api/client";
 import { useAuth, initials } from "../../context/AuthContext";
+import AiMarkdown from "../../components/ui/AiMarkdown";
 
 /** Ghép nhãn trích dẫn gọn: "Điều 12 · Khoản 3 · Quy chế ... · tr.~45" */
 const srcLabel = (s) => {
@@ -25,33 +24,6 @@ const SUGGESTIONS = [
   "Có những hình thức kỷ luật nào đối với người học vi phạm?",
   "Quy trình xử lý kỷ luật người học gồm bước nào?",
 ];
-
-/** Style cho phần markdown trong bong bóng bot (render thay vì in dấu ** ra màn hình) */
-const mdComponents = {
-  p: ({ children }) => <p className="mb-2 last:mb-0 whitespace-pre-line">{children}</p>,
-  ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-0.5">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-0.5">{children}</ol>,
-  li: ({ children }) => <li className="whitespace-pre-line">{children}</li>,
-  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer" className="text-primary underline break-all">
-      {children}
-    </a>
-  ),
-  table: ({ children }) => (
-    <div className="overflow-x-auto my-2">
-      <table className="min-w-full text-xs border border-border">{children}</table>
-    </div>
-  ),
-  th: ({ children }) => <th className="border border-border px-2 py-1 text-left font-semibold">{children}</th>,
-  td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
-  code: ({ children }) => (
-    <code className="bg-app border border-border rounded px-1 py-0.5 text-[0.85em]">{children}</code>
-  ),
-  blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-primary/50 pl-3 my-2 text-secondary">{children}</blockquote>
-  ),
-};
 
 function BotAvatar({ large = false }) {
   return (
@@ -335,9 +307,7 @@ export default function RegulationChatPage() {
               <div className="flex flex-col items-start max-w-[85%] md:max-w-[75%]">
                 <div className="text-sm bg-surface border border-border rounded-2xl rounded-bl-md px-4 py-2.5 shadow-sm">
                   <div className="[&>*:first-child]:mt-0">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-                      {m.text}
-                    </ReactMarkdown>
+                    <AiMarkdown text={m.text} />
                   </div>
                   <SourceList sources={m.sources} />
                   {(m.provider || m.model) && (

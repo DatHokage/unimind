@@ -40,7 +40,7 @@ def main():
     h_lect = login("DTCGV001")
     h_advisor = login("DTCCV001")
     h_office = login("ptdt")
-    h_admin = login("DTCAD001")
+    login("DTCAD001")  # admin — chỉ cần đăng nhập được
     check("đăng nhập đủ 7 tài khoản demo", True)
 
     # Đăng nhập không phân biệt hoa/thường: gõ thường dtcgv001 vẫn được
@@ -61,10 +61,10 @@ def main():
     classes = httpx.get(
         f"{BASE}/course-classes", params={"status": "open", "size": 100}, headers=h_stu1
     ).json()["data"]
-    by_room = {(c["course_code"], (c["schedule"][0] or {}).get("room")): c for c in classes}
-    ctdl = by_room[("CTDL", "B201")]     # CTDL.A — lớp chính demo đăng ký
-    csdl = by_room[("CSDL", "B202")]     # CSDL.A — max_size=2, đã đầy từ seed
-    oop = by_room[("OOP", "B203")]       # OOP.A — trùng lịch CTDL.A + cần tiên quyết CTDL
+    by_room = {(c["course_code"], c["room"]): c for c in classes}
+    ctdl = by_room[("CTDL", "B201")]     # CTDL-N01 — lớp chính demo đăng ký
+    csdl = by_room[("CSDL", "B202")]     # CSDL-N01 — max_size=2, đã đầy từ seed
+    oop = by_room[("OOP", "B203")]       # OOP-N01 — trùng lịch CTDL-N01 + cần tiên quyết CTDL
 
     # 1) DTC001 (đã đạt TH1) đăng ký CTDL → 201
     r = httpx.post(f"{BASE}/enrollments", json={"course_class_id": ctdl["id"]}, headers=h_stu1)

@@ -1,3 +1,6 @@
+import datetime
+
+
 def test_schedule_defaults_to_latest_term(client, db, make_user, make_student, make_course, make_course_class, make_enrollment):
     c_old = make_course(db, code="HP_CU")
     c_new = make_course(db, code="HP_MOI")
@@ -59,8 +62,8 @@ def test_schedule_empty_student(client, db, make_user, make_student):
 def test_schedule_sorted_by_weekday_period(client, db, make_user, make_student, make_course, make_course_class, make_enrollment):
     c1 = make_course(db, code="HP_T7")
     c2 = make_course(db, code="HP_T2")
-    cc_t7 = make_course_class(db, c1, schedule=[{"weekday": 7, "start_period": 1, "end_period": 2, "room": "C1"}], year=2026, term=1)
-    cc_t2 = make_course_class(db, c2, schedule=[{"weekday": 2, "start_period": 4, "end_period": 6, "room": "A1"}], year=2026, term=1)
+    cc_t7 = make_course_class(db, c1, weekday=7, block="morning", room="C1", year=2026, term=1)
+    cc_t2 = make_course_class(db, c2, weekday=2, block="afternoon", room="A1", year=2026, term=1)
     student = make_student(db)
     make_enrollment(db, student, cc_t7)
     make_enrollment(db, student, cc_t2)
@@ -124,3 +127,71 @@ def test_schedule_requires_auth(client, db, make_student, make_course, make_cour
     student = make_student(db)
     resp = client.get(f"/schedule/student/{student.id}")
     assert resp.status_code == 401
+
+
+# ---------- Buổi học quy đổi ra ngày cụ thể (view tháng / tuần học) ----------
+
+def test_schedule_sessions_dated(client, db, make_user, make_student, make_course,
+                                 make_course_class, make_enrollment, make_term):
+    """Có start_date → trả đủ (credits×3) buổi với date/week tính đúng từ thứ Hai tuần 1."""
+    make_term(db, year=2026, term=1, start_date=datetime.date(2026, 8, 24))  # Thứ 2
+    c = make_course(db, code="HP9T", credits=3)  # 3 TC × 3 = 9 buổi
+    cc = make_course_class(db, c, weekday=3, block="morning", year=2026, term=1)  # Thứ 3
+    student = make_student(db)
+    make_enrollment(db, student, cc)
+    headers = make_user(db, role="student", student=student)
+
+    resp = client.get(f"/schedule/student/{student.id}", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["start_date"] == "2026-08-24"
+    sessions = body["sessions"]
+    assert len(sessions) == 9
+    # Buổi 1 = thứ 3 ngay sau thứ Hai bắt đầu kỳ; buổi k cách 7 ngày
+    first = datetime.date(2026, 8, 25)
+    for i, s in enumerate(sessions, start=1):
+        assert s["seq"] == i and s["week"] == i
+        assert s["date"] == (first + datetime.timedelta(days=(i - 1) * 7)).isoformat()
+        assert s["weekday"] == 3 and s["status"] == "normal"
+        assert s["start_period"] == 1 and s["end_period"] == 5
+    # Sắp theo ngày tăng dần
+    dates = [s["date"] for s in sessions]
+    assert dates == sorted(dates)
+
+
+def test_schedule_sessions_apply_overrides(client, db, make_user, make_student, make_course,
+                                           make_course_class, make_enrollment, make_term,
+                                           make_session_override):
+    """moved → đổi sang thứ/khối/phòng bù cùng tuần; cancelled → giữ ngày gốc, đánh dấu nghỉ."""
+    make_term(db, year=2026, term=1, start_date=datetime.date(2026, 8, 24))
+    c = make_course(db, code="HP_OV", credits=2)  # 6 buổi
+    cc = make_course_class(db, c, weekday=3, block="morning", room="A1", year=2026, term=1)
+    make_session_override(db, cc, seq=1, action="moved", weekday=6, block="afternoon", room="P999")
+    make_session_override(db, cc, seq=2, action="cancelled")
+    student = make_student(db)
+    make_enrollment(db, student, cc)
+    headers = make_user(db, role="student", student=student)
+
+    sessions = client.get(f"/schedule/student/{student.id}", headers=headers).json()["sessions"]
+    s1, s2 = sessions[0], sessions[1]
+    # Buổi 1 dời sang chiều thứ 6 tuần 1 (28/08), phòng bù
+    assert s1["status"] == "moved" and s1["weekday"] == 6
+    assert s1["date"] == "2026-08-28" and s1["block"] == "afternoon" and s1["room"] == "P999"
+    # Buổi 2 nghỉ — vẫn hiện đúng ngày gốc thứ 3 tuần 2
+    assert s2["status"] == "cancelled" and s2["date"] == "2026-09-01" and s2["room"] == "A1"
+    # Các buổi còn lại bình thường
+    assert all(s["status"] == "normal" for s in sessions[2:])
+
+
+def test_schedule_sessions_without_term_start(client, db, make_user, make_student, make_course,
+                                              make_course_class, make_enrollment):
+    """Kỳ chưa nhập ngày bắt đầu → sessions rỗng, UI tự ẩn view tháng/tuần học."""
+    cc = make_course_class(db, make_course(db), year=2030, term=2)
+    student = make_student(db)
+    make_enrollment(db, student, cc)
+    headers = make_user(db, role="student", student=student)
+
+    body = client.get(f"/schedule/student/{student.id}", headers=headers).json()
+    assert body["start_date"] is None
+    assert body["sessions"] == []
+    assert len(body["classes"]) == 1  # lưới tuần điển hình vẫn hoạt động

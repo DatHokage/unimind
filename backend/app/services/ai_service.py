@@ -1,11 +1,11 @@
 """Dựng payload cho AI từ DB — chỉ truy vấn dữ liệu của sinh viên được yêu cầu,
 không bao giờ đưa dữ liệu sinh viên khác vào prompt (mục 7 đặc tả)."""
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models import Course, CourseClass, Enrollment, Grade, HomeroomClass, Student
+from app.models import Course, CourseClass, Enrollment, Grade, Student
 from app.services.course_service import get_prerequisite_ids
 from app.services.enrollment_service import check_enrollment_eligibility, count_enrollments
 from app.services.grade_service import compute_gpa, convert_score10, is_passed
@@ -15,6 +15,15 @@ from app.services.prompts import (
     build_course_advice_prompt,
     build_study_summary_prompt,
 )
+
+
+def _plain(text: str) -> str:
+    """Gỡ dấu **in đậm** model thỉnh thoảng tự thêm dù prompt đã cấm.
+
+    Mọi panel hiển thị kết quả AI đều in văn bản thuần (không render markdown),
+    nên chỉ cần bỏ cặp dấu ** — nội dung bên trong giữ nguyên.
+    """
+    return text.replace("**", "")
 
 
 def _student_brief(db: Session, student: Student) -> dict:
@@ -81,7 +90,12 @@ def build_course_advice_payload(
                 "credits": cc.course.credits,
                 "year": cc.year,
                 "term": cc.term,
-                "schedule": cc.schedule or [],
+                # Lịch cố định: 1 buổi/tuần, khối giờ chuẩn (morning/afternoon/evening)
+                "time_slot": {
+                    "weekday": cc.weekday,
+                    "block": cc.block,
+                    "room": cc.room,
+                },
                 "remaining_slots": max(cc.max_size - count_enrollments(db, cc.id), 0),
                 "prerequisites": prereq_codes,
                 "eligible": eligible,
@@ -168,17 +182,17 @@ async def run_course_advice(
             recommendations.append(
                 {
                     "course_class_id": cc_id,
-                    "course_code": str(rec.get("course_code", "")),
-                    "reason": str(rec.get("reason", "")),
+                    "course_code": _plain(str(rec.get("course_code", ""))),
+                    "reason": _plain(str(rec.get("reason", ""))),
                 }
             )
     return (
         {
-            "overview": str(result["overview"]) if result.get("overview") else None,
+            "overview": _plain(str(result["overview"])) if result.get("overview") else None,
             "recommendations": recommendations,
-            "warnings": [str(w) for w in result.get("warnings", [])],
-            "suggestions": [str(s) for s in result.get("suggestions", [])],
-            "notes": str(result["notes"]) if result.get("notes") else None,
+            "warnings": [_plain(str(w)) for w in result.get("warnings", [])],
+            "suggestions": [_plain(str(s)) for s in result.get("suggestions", [])],
+            "notes": _plain(str(result["notes"])) if result.get("notes") else None,
         },
         eligible,
         False,
@@ -192,9 +206,9 @@ async def run_study_summary(db: Session, student_id: int) -> tuple[dict, bool]:
         result = await call_llm_json(build_study_summary_prompt(payload))
         return (
             {
-                "summary": str(result.get("summary", "")),
-                "warnings": [str(w) for w in result.get("warnings", [])],
-                "suggestions": [str(s) for s in result.get("suggestions", [])],
+                "summary": _plain(str(result.get("summary", ""))),
+                "warnings": [_plain(str(w)) for w in result.get("warnings", [])],
+                "suggestions": [_plain(str(s)) for s in result.get("suggestions", [])],
             },
             False,
         )
@@ -354,10 +368,10 @@ async def run_class_overview(db: Session, homeroom_id: int) -> dict:
         }
 
     return {
-        "summary": str(result.get("summary", "")).strip() or None,
-        "strengths": [str(x) for x in result.get("strengths", [])],
-        "weaknesses": [str(x) for x in result.get("weaknesses", [])],
-        "suggestions": [str(x) for x in result.get("suggestions", [])],
+        "summary": _plain(str(result.get("summary", ""))).strip() or None,
+        "strengths": [_plain(str(x)) for x in result.get("strengths", [])],
+        "weaknesses": [_plain(str(x)) for x in result.get("weaknesses", [])],
+        "suggestions": [_plain(str(x)) for x in result.get("suggestions", [])],
         "stats": stats,
         "fallback": False,
     }
