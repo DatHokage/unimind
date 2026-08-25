@@ -9,7 +9,13 @@ import { Spinner } from "./components/ui";
 // Shell layout giữ import tĩnh để sidebar/header vẽ được ngay.
 import MainLayout from "./layouts/MainLayout";
 
-const LoginPage = lazy(() => import("./pages/LoginPage"));
+// NGOẠI LỆ: LoginPage import TĨNH — nó là cửa vào của mọi khách chưa đăng nhập,
+// nếu lazy thì mỗi lần mở /login đều hiện spinner "Đang tải…" chờ chunk về
+// (~1s lần đầu). Nạp sẵn để vẽ ngay khung hình đầu; bù lại DeskScene (cảnh nền)
+// vẫn lazy bên trong LoginPage nên phần nặng nhất vẫn rời khỏi bundle đầu,
+// thậm chí bắt đầu tải SỚM hơn (chạy ngay khi bundle chính execute).
+import LoginPage from "./pages/LoginPage";
+
 const StudentDashboard = lazy(() => import("./pages/student/Dashboard"));
 const SchedulePage = lazy(() => import("./pages/student/SchedulePage"));
 const RegistrationPage = lazy(() => import("./pages/student/RegistrationPage"));
