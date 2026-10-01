@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Bot, ChevronDown, Cpu, Paperclip, RotateCcw, Send } from "lucide-react";
-import api from "../../api/client";
+import api, { apiUrl } from "../../api/client";
 import { useAuth, initials } from "../../context/AuthContext";
 import AiMarkdown from "../../components/ui/AiMarkdown";
 
@@ -243,7 +243,7 @@ export default function RegulationChatPage() {
     abortRef.current = controller;
     try {
       const token = localStorage.getItem("ql_token");
-      const res = await fetch(`${api.defaults.baseURL}/ai/regulation-chat/stream`, {
+      const res = await fetch(apiUrl("/ai/regulation-chat/stream"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

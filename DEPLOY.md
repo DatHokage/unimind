@@ -72,6 +72,7 @@ Bối cảnh: không có GPU/server mạnh, chỉ có máy tính thường — �
 | `VOYAGE_MODEL` | Model embedding, mặc định `voyage-4` (không đặt cũng được). **Đổi model này là phải rebuild vector store** (`python scripts/rebuild_vector_store.py`) — mỗi model là một không gian vector riêng |
 | `OPENROUTER_API_KEY` | Key OpenRouter — **LLM chính của chatbot quy chế** (bắt buộc cho chatbot; Gemini bên dưới là dự phòng) |
 | `OPENROUTER_MODEL` | Mặc định `nvidia/nemotron-3.5-lightning:free` (không đặt cũng được) |
+| `OPENROUTER_MODELS` | Danh sách model hiện trên dropdown chatbot quy chế (cách nhau dấu phẩy). **Để trống → backend tự gọi API OpenRouter lấy toàn bộ model `:free` hiện có** (~15 model, số lượng đổi theo thời gian). Đặt giá trị → ghim đúng danh sách. ⚠️ Nếu local có đặt mà Render để trống thì hai nơi hiển thị KHÁC nhau — đặt cùng giá trị ở cả hai. Model ghim đã hết `:free` sẽ lỗi khi chọn, nên rà lại định kỳ |
 | `GOOGLE_API_KEY` | Key Gemini — vẫn **BẮT BUỘC**: LLM chính của 2 chức năng AI dạng JSON (tư vấn đăng ký, tóm tắt học tập) + **dự phòng** cho chatbot quy chế khi OpenRouter lỗi/rate-limit |
 | `GEMINI_MODEL` | Mặc định `gemini-2.0-flash` |
 | `CORS_ORIGINS` | Danh sách origin được phép, phân tách bằng dấu phẩy — **bắt buộc có domain Vercel** |

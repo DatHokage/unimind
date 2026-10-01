@@ -33,4 +33,15 @@ export const errMsg = (e) => {
   return e?.message || "Có lỗi xảy ra";
 };
 
+/**
+ * Ghép baseURL với path thành URL tuyệt đối, chuẩn hóa dấu "/" ở mối nối.
+ *
+ * Dùng cho chỗ KHÔNG đi qua axios (fetch thô — vd SSE streaming). axios tự
+ * chuẩn hóa baseURL có "/" cuối, còn phép nối chuỗi thô thì không: baseURL
+ * "https://x.onrender.com/" + "/ai/..." → "//ai/..." — FastAPI coi đây là path
+ * khác và trả 404.
+ */
+export const apiUrl = (path) =>
+  `${(import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+
 export default api;

@@ -33,17 +33,19 @@ OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 # Danh sach du phong: cac model :free on dinh, duoc chon thu cong.
 # CHI dung khi khong goi duoc API OpenRouter (mat mang, chan firewall...) —
 # binh thuong lay danh sach truc tiep tu API de tranh model da het mien phi.
-# Gan OPENROUTER_MODELS=oai/model1:free,org/model2:free trong .env de tu dinh nghia.
+# Gan OPENROUTER_MODELS=oai/model1:free,org/model2:free trong .env de tu dinh nghia
+# (khi co bien nay thi danh sach duoi day KHONG duoc dung toi).
 DEFAULT_OPENROUTER_MODELS = [
     "nvidia/nemotron-3-ultra-550b-a55b:free",
     "poolside/laguna-s-2.1:free",
     "liquid/lfm-2.5-2.6b:free",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
     "nvidia/nemotron-3.5-lightning:free",        # mac dinh trong .env
-    "inclusionai/ling-3.0-flash-fin:free",
+    "poolside/laguna-xs-2.1:free",
+    "cohere/north-mini-code:free",
     "inclusionai/ling-3.0-flash-sante:free",
-    "nex-agi/nex-n2.5-mini:free",
     "thinkingmachines/inkling-small:free",
+    "thinkingmachines/inkling:free",
 ]
 
 # Model co :free nhung khong phai chatbot (phan loai, kiem duyet noi dung...)
