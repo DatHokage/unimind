@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.core.cache import TTL_STATS, build_key, cache
 from app.core.config import settings
 from app.core.database import get_db
 from app.dependencies.auth_dependency import advisor_identity, require_role
@@ -36,6 +38,15 @@ def academic_results(
         )
         if class_id is not None and class_id not in advisor_class_ids:
             raise HTTPException(status_code=403, detail="Không phải lớp bạn phụ trách")
+
+    # Cache SAU khi phân quyền xong (403 phải đi trước) — aggregate 5 bảng là
+    # câu SQL nặng nhất app; enrollment/grade write xóa nhóm stats:.
+    scope = f"adv{advisor_identity(user)}" if user["role"] == "advisor" else "office"
+    cache_key = build_key("stats", "academic", scope, class_id or 0, cohort or 0,
+                          year or 0, term or 0)
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
 
     stmt = (
         select(
@@ -93,7 +104,9 @@ def academic_results(
                 else None,
             )
         )
-    return rows
+    payload = jsonable_encoder(rows)
+    cache.set_json(cache_key, payload, ttl=TTL_STATS)
+    return payload
 
 
 @router.get("/popular-courses", response_model=list[PopularCourseRow])
@@ -103,6 +116,10 @@ def popular_courses(
     user: dict = Depends(require_role("training_office")),
 ):
     """Học phần có nhiều sinh viên đăng ký nhất."""
+    cache_key = build_key("stats", "popular", limit)
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
     rows = db.execute(
         select(
             Course.code,
@@ -116,12 +133,16 @@ def popular_courses(
         .order_by(func.count(Enrollment.id).desc())
         .limit(limit)
     )
-    return [
-        PopularCourseRow(
-            course_code=code,
-            course_name=name,
-            credits=credits,
-            enrollment_count=count,
-        )
-        for code, name, credits, count in rows
-    ]
+    payload = jsonable_encoder(
+        [
+            PopularCourseRow(
+                course_code=code,
+                course_name=name,
+                credits=credits,
+                enrollment_count=count,
+            )
+            for code, name, credits, count in rows
+        ]
+    )
+    cache.set_json(cache_key, payload, ttl=TTL_STATS)
+    return payload

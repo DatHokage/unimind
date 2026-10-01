@@ -62,10 +62,10 @@ class ClassOverviewResponse(BaseModel):
 class RegulationChatRequest(BaseModel):
     question: str
     session_id: str = "default"  # định danh phiên chat (giữ ngữ cảnh hỏi-đáp)
-    # Tương thích dropdown chọn model trên web: server vẫn nhận nhưng chỉ
-    # dùng để giữ khóa lịch sử hội thoại — model trả lời theo cấu hình .env.
+    # Dropdown chọn model trên web: model được chọn là model trả lời (đã kiểm
+    # tra hợp lệ ở server); lỗi thì tự fallback provider còn lại theo .env.
     provider: str = ""  # "openrouter" | "gemini"
-    model: str = ""     # ví dụ "nvidia/nemotron-3-super-120b-a12b:free"
+    model: str = ""     # ví dụ "nvidia/nemotron-3.5-lightning:free"
 
 
 class RegulationSource(BaseModel):

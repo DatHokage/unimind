@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.cache import cache
 from app.core.config import settings
 from app.routers import (
     advisors,
@@ -31,7 +32,10 @@ async def lifespan(app: FastAPI):
 
     if os.environ.get("RAG_WARMUP", "1") == "1" and is_configured():
         threading.Thread(target=warmup, daemon=True).start()
-    yield
+    try:
+        yield
+    finally:
+        cache.close()
 
 
 app = FastAPI(title="Hệ thống Quản lý Đào tạo", version="1.0.0", lifespan=lifespan)

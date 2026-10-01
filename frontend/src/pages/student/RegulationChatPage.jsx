@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, ChevronDown, Cpu, Paperclip, RotateCcw, Send } from "lucide-react";
-import api, { errMsg } from "../../api/client";
+import { ArrowUpRight, Bot, ChevronDown, Cpu, Paperclip, RotateCcw, Send } from "lucide-react";
+import api from "../../api/client";
 import { useAuth, initials } from "../../context/AuthContext";
 import AiMarkdown from "../../components/ui/AiMarkdown";
 
@@ -16,13 +16,59 @@ const fmtTime = (ts) =>
 /** Nhãn gọn của model trong dropdown / chip tin nhắn (bỏ hậu tố ":free" cho gọn) */
 const shortModel = (id) => (id || "").replace(/:free$/, "");
 
+/**
+ * Tách "<provider>/<model>" thành [provider, model].
+ * KHÔNG dùng split("/", 2): tham số 2 của split là số phần tử tối đa, nên
+ * "openrouter/nvidia/nemotron-…" sẽ bị cắt thành "nvidia" và mất phần còn lại.
+ */
+const splitSelection = (sel) => {
+  const i = (sel || "").indexOf("/");
+  return i < 0 ? ["", ""] : [sel.slice(0, i), sel.slice(i + 1)];
+};
+
+/** Nghịch đảo của splitSelection — nơi DUY NHẤT mã hóa khóa "<provider>/<model>" */
+const selKey = (provider, model) => `${provider}/${model}`;
+
+/**
+ * Đọc SSE từ Response: event cách nhau bằng dòng trống, mỗi event một dòng
+ * "data: {json}". Gọi onEvent(ev) cho từng event parse được; bỏ qua dòng khác
+ * và event hỏng JSON. Tách riêng khỏi component vì đây thuần là chuyện
+ * transport, không liên quan tới state của khung chat.
+ *
+ * Lỗi từ onEvent KHÔNG bị nuốt — để lọt lên caller (sendText hiển thị lỗi).
+ */
+const readSSE = async (res, onEvent) => {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep;
+    while ((sep = buffer.indexOf("\n\n")) >= 0) {
+      const raw = buffer.slice(0, sep).trim();
+      buffer = buffer.slice(sep + 2);
+      if (!raw.startsWith("data: ")) continue;
+      let ev;
+      try {
+        ev = JSON.parse(raw.slice("data: ".length));
+      } catch {
+        continue; // event hỏng — bỏ qua, không làm chết cả stream
+      }
+      onEvent(ev);
+    }
+  }
+};
+
 /** Câu hỏi gợi ý — hiện ở màn hình chào, nhấn vào là gửi ngay */
 const SUGGESTIONS = [
-  "Người học có những quyền gì theo quy chế?",
-  "Sinh viên bị cấm thi trong những trường hợp nào?",
-  "Điều kiện xét học bổng khuyến khích học tập là gì?",
-  "Có những hình thức kỷ luật nào đối với người học vi phạm?",
-  "Quy trình xử lý kỷ luật người học gồm bước nào?",
+  "Người học có những quyền gì?",
+  "Khi nào sinh viên bị cấm thi?",
+  "Điều kiện xét học bổng khuyến khích?",
+  "Các hình thức kỷ luật người học?",
+  "Quy trình xử lý kỷ luật gồm mấy bước?",
+  "Cách tính điểm học phần và GPA?",
 ];
 
 function BotAvatar({ large = false }) {
@@ -95,7 +141,7 @@ function ModelSelect({ models, loading, selected, onChange, disabled }) {
       >
         {loading && <option>Đang tải model…</option>}
         {models.map((m) => (
-          <option key={`${m.provider}/${m.model}`} value={`${m.provider}/${m.model}`}>
+          <option key={selKey(m.provider, m.model)} value={selKey(m.provider, m.model)}>
             {shortModel(m.model)}
           </option>
         ))}
@@ -110,11 +156,17 @@ export default function RegulationChatPage() {
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
   const [sending, setSending] = useState(false);
+  // true khi chữ đang chảy dần vào bong bóng bot (ẩn bong bóng "đang gõ")
+  const [streaming, setStreaming] = useState(false);
   const [models, setModels] = useState([]);
   const [selected, setSelected] = useState(""); // "<provider>/<model>"
   const [modelsLoading, setModelsLoading] = useState(true);
   // session_id phân biệt ngữ cảnh hội thoại phía server; đổi khi xóa hội thoại
   const sessionIdRef = useRef(`web-${Math.random().toString(36).slice(2, 10)}`);
+  // id tin nhắn bot đang stream trong lượt gửi hiện tại (null = chưa tạo)
+  const streamIdRef = useRef(null);
+  // hủy kết nối stream khi rời trang
+  const abortRef = useRef(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -131,8 +183,8 @@ export default function RegulationChatPage() {
         const list = data.models || [];
         setModels(list);
         const def = data.default;
-        if (def?.provider && def?.model) setSelected(`${def.provider}/${def.model}`);
-        else if (list[0]) setSelected(`${list[0].provider}/${list[0].model}`);
+        if (def?.provider && def?.model) setSelected(selKey(def.provider, def.model));
+        else if (list[0]) setSelected(selKey(list[0].provider, list[0].model));
       } catch {
         // 503 / lỗi mạng: không có model nào -> ẩn dropdown, server tự dùng mặc định
         if (alive) setModels([]);
@@ -150,47 +202,126 @@ export default function RegulationChatPage() {
     scrollToBottom();
   }, [messages, sending]);
 
+  // Hủy stream đang chạy nếu rời trang
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const sendText = async (q) => {
     const text = q.trim();
     if (!text || sending) return;
     setSending(true);
+    setStreaming(false);
+    streamIdRef.current = null;
     setMessages((m) => [...m, { role: "user", text, at: Date.now() }]);
-    const [provider, model] = selected ? selected.split("/", 2) : ["", ""];
-    try {
-      const { data } = await api.post("/ai/regulation-chat", {
-        question: text,
-        session_id: sessionIdRef.current,
-        provider,
-        model,
-      });
-      setMessages((m) => [
-        ...m,
-        {
-          role: "bot",
-          text: data.answer,
-          sources: data.sources,
-          provider: data.provider,
-          model: data.model,
-          at: Date.now(),
-        },
-      ]);
-      // Nếu model được chọn bị lỗi, server tự fallback — cập nhật dropdown theo
-      // model thực tế trả lời để câu sau khỏi gọi lại model đang lỗi
-      if (provider && data.provider && data.model && data.model !== model) {
-        const next = `${data.provider}/${data.model}`;
-        if (models.some((m) => `${m.provider}/${m.model}` === next)) setSelected(next);
+    const [provider, model] = splitSelection(selected);
+
+    // Cập nhật bong bóng bot đang stream — mọi nhánh (flush/done/error) dùng chung
+    const updateBot = (fn) =>
+      setMessages((m) =>
+        m.map((x) => (x.id === streamIdRef.current ? fn(x) : x))
+      );
+
+    // Gom delta theo nhịp 50ms — không re-render markdown mỗi token
+    let pending = "";
+    let flushTimer = null;
+    const flush = () => {
+      flushTimer = null;
+      if (!pending) return;
+      const chunk = pending;
+      pending = "";
+      updateBot((x) => ({ ...x, text: x.text + chunk }));
+    };
+    // Bỏ phần chữ đang chờ flush — gọi khi done/error sẽ thay hoặc ghi đè text
+    const dropPending = () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
       }
+      pending = "";
+    };
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const token = localStorage.getItem("ql_token");
+      const res = await fetch(`${api.defaults.baseURL}/ai/regulation-chat/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          question: text,
+          session_id: sessionIdRef.current,
+          provider,
+          model,
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok || !res.body) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const data = await res.json();
+          if (typeof data.detail === "string") detail = data.detail;
+        } catch {
+          /* giữ detail mặc định */
+        }
+        throw Object.assign(new Error(detail), { status: res.status });
+      }
+
+      // Đọc SSE: event cách nhau bằng dòng trống, mỗi event một dòng "data: {json}"
+      const handleEvent = (ev) => {
+        if (ev.type === "meta") {
+          // Tạo bong bóng bot rỗng kèm trích dẫn — chữ sẽ chảy vào sau
+          const id = `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          streamIdRef.current = id;
+          setMessages((m) => [
+            ...m,
+            { id, role: "bot", text: "", sources: ev.sources, at: Date.now() },
+          ]);
+          setStreaming(true);
+        } else if (ev.type === "delta") {
+          pending += ev.text;
+          if (!flushTimer) flushTimer = setTimeout(flush, 50);
+        } else if (ev.type === "done") {
+          // Câu hoàn chỉnh đã qua clean_answer — thay text đang chảy bằng nó
+          dropPending();
+          updateBot((x) => ({
+            ...x, text: ev.answer, provider: ev.provider, model: ev.model, complete: true,
+          }));
+          // Model được chọn bị lỗi, server tự fallback — cập nhật dropdown theo
+          // model thực tế trả lời để câu sau khỏi gọi lại model đang lỗi
+          if (provider && ev.provider && ev.model && ev.model !== model) {
+            const next = selKey(ev.provider, ev.model);
+            if (models.some((m) => selKey(m.provider, m.model) === next)) setSelected(next);
+          }
+        } else if (ev.type === "error") {
+          dropPending();
+          updateBot((x) => ({
+            ...x, text: x.text ? `${x.text}\n\n${ev.message}` : ev.message,
+          }));
+        }
+      };
+      await readSSE(res, handleEvent);
+      flush();
     } catch (err) {
-      const status = err.response?.status;
+      const status = err?.status;
       const hint =
         status === 503
           ? " — Chatbot quy chế chưa được bật: cần vector store (tài liệu quy chế) và API key trong backend/.env."
           : "";
-      setMessages((m) => [
-        ...m,
-        { role: "bot", text: `Có lỗi khi gọi chatbot: ${errMsg(err)}${hint}`, at: Date.now() },
-      ]);
+      const msgText = `Có lỗi khi gọi chatbot: ${err.message}${hint}`;
+      // Chưa tạo bong bóng bot (lỗi trước event meta) -> thêm mới; đã có thì ghi vào
+      if (streamIdRef.current == null) {
+        setMessages((m) => [...m, { role: "bot", text: msgText, at: Date.now() }]);
+      } else {
+        updateBot((x) => ({
+          ...x, text: x.text ? `${x.text}\n\n${msgText}` : msgText,
+        }));
+      }
     } finally {
+      dropPending();
+      abortRef.current = null;
+      setStreaming(false);
       setSending(false);
       inputRef.current?.focus();
     }
@@ -236,12 +367,7 @@ export default function RegulationChatPage() {
             title="Trực tuyến"
           />
         </div>
-        <div className="min-w-0">
-          <div className="font-semibold text-sm">Trợ lý quy chế</div>
-          <div className="text-xs text-secondary truncate">
-            Trả lời kèm trích dẫn Điều / Khoản / trang từ Sổ tay sinh viên
-          </div>
-        </div>
+        <div className="font-semibold text-sm">Trợ lý quy chế</div>
         <ModelSelect
           models={models}
           loading={modelsLoading}
@@ -264,21 +390,21 @@ export default function RegulationChatPage() {
       {/* Vùng tin nhắn */}
       <div className="flex-1 overflow-y-auto bg-app px-4 py-4 space-y-4">
         {messages.length === 0 && !sending && (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4">
+          <div className="flex flex-col items-center justify-start h-full text-center px-4 pt-[7vh]">
             <BotAvatar large />
-            <p className="mt-3 font-semibold">Chào bạn, mình là trợ lý quy chế 👋</p>
-            <p className="mt-1 text-sm text-secondary max-w-md">
-              Đặt câu hỏi về quy chế đào tạo, quy định thi, điều kiện tốt nghiệp… hoặc chọn
-              nhanh một câu gợi ý bên dưới.
-            </p>
-            <div className="mt-4 flex flex-wrap justify-center gap-2 max-w-lg">
+            <p className="mt-3 font-semibold">Chào bạn, mình là trợ lý quy chế</p>
+            <div className="mt-5 w-full max-w-xl grid grid-cols-1 sm:grid-cols-2 gap-2">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => sendText(s)}
-                  className="text-sm bg-surface border border-border rounded-full px-3.5 py-1.5 text-primary hover:border-primary/50 hover:bg-primary-soft transition-colors duration-150 cursor-pointer shadow-sm"
+                  className="group flex items-center justify-between gap-3 text-left text-sm bg-surface border border-border rounded-xl px-3.5 py-2.5 text-primary shadow-sm hover:border-primary/50 hover:bg-primary-soft transition-colors duration-150 cursor-pointer"
                 >
-                  {s}
+                  <span className="truncate">{s}</span>
+                  <ArrowUpRight
+                    size={15}
+                    className="shrink-0 text-secondary opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                  />
                 </button>
               ))}
             </div>
@@ -309,10 +435,10 @@ export default function RegulationChatPage() {
                   <div className="[&>*:first-child]:mt-0">
                     <AiMarkdown text={m.text} />
                   </div>
-                  <SourceList sources={m.sources} />
-                  {(m.provider || m.model) && (
-                    <div className="mt-1.5 text-[10px] text-secondary uppercase tracking-wide truncate max-w-full">
-                      {m.provider}{m.model ? ` · ${shortModel(m.model)}` : ""}
+                  {m.complete && <SourceList sources={m.sources} />}
+                  {m.model && (
+                    <div className="mt-1.5 text-[10px] text-secondary truncate max-w-full">
+                      {shortModel(m.model)}
                     </div>
                   )}
                 </div>
@@ -322,7 +448,7 @@ export default function RegulationChatPage() {
           )
         )}
 
-        {sending && <TypingBubble />}
+        {sending && !streaming && <TypingBubble />}
         <div ref={bottomRef} />
       </div>
 

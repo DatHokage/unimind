@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.cache import TTL_STUDENT, build_key, cache
 from app.core.database import get_db
 from app.dependencies.auth_dependency import get_current_user, get_target_student
 from app.models import Enrollment
@@ -53,8 +55,16 @@ def get_student_schedule(
 
     Không truyền year/term → trả về kỳ mới nhất có đăng ký.
     `terms` luôn trả đủ các kỳ có đăng ký (mới nhất trước) để UI dựng bộ chọn kỳ.
+
+    Cache TTL_STUDENT theo (student_id, year, term) — endpoint nặng nhất app
+    (mở rộng cả lịch học ra từng buổi); đăng ký/CRUD buổi học đều invalidate.
     """
     get_target_student(db, user, student_id)
+
+    cache_key = build_key("sched", "stu", student_id, year or "", term or "")
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
 
     enrollments = db.scalars(
         select(Enrollment).where(Enrollment.student_id == student_id)
@@ -120,12 +130,16 @@ def get_student_schedule(
                 sessions.append(SessionEventOut(**info, **ev))
         sessions.sort(key=lambda s: (s.date, s.start_period))
 
-    return StudentScheduleOut(
-        student_id=student_id,
-        year=sel_year,
-        term=sel_term,
-        start_date=start_date,
-        terms=[TermOption(year=y, term=t) for y, t in term_keys],
-        classes=classes,
-        sessions=sessions,
+    payload = jsonable_encoder(
+        StudentScheduleOut(
+            student_id=student_id,
+            year=sel_year,
+            term=sel_term,
+            start_date=start_date,
+            terms=[TermOption(year=y, term=t) for y, t in term_keys],
+            classes=classes,
+            sessions=sessions,
+        )
     )
+    cache.set_json(cache_key, payload, ttl=TTL_STUDENT)
+    return payload

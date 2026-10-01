@@ -2,9 +2,9 @@
 chain.py — Helpers dinh dang cho pipeline RAG (khong con LCEL/LangChain).
 
 Pipeline hien tai: app/services/rag_service.py dieu phoi
-    question -> Gemini embedding API -> ChromaDB (query_embeddings tuong minh)
+    question -> Voyage AI embedding API -> ChromaDB (query_embeddings tuong minh)
     -> format_context + SYSTEM_PROMPT (src/rag/prompts.py)
-    -> llm_service.call_llm_text (Gemini -> OpenRouter fallback)
+    -> llm_service.call_llm_text (model đã chọn -> fallback provider còn lại)
 
 Module nay chi giu cac buoc dinh dang van ban: ghep ngu canh, dinh dang
 sources, don dep cau tra loi. Luu y: khong con ham ask()/build_chain() —

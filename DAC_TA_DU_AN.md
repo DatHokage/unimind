@@ -256,188 +256,27 @@ Vector store dựng sẵn và commit trong repo — deploy không cần chạy l
 
 ---
 
-# Phần 6 (cập nhật): Công thức tính điểm
- 
-> Thay thế phần 6.1 trước đó — điểm quá trình (`process_score`) không còn là 1 con số nhập tay đơn giản, mà được **tính tự động** từ điểm chuyên cần, điểm thường xuyên và điểm test giữa kỳ. Điểm thi (`exam_score`) và công thức GPA (6.2) giữ nguyên như thiết kế trước.
- 
-## 6.1. Bổ sung các thành phần điểm quá trình
- 
-Trước đây `Grade.process_score` là 1 field do `lecturer` nhập trực tiếp. Nay tách nhỏ thành các thành phần, `lecturer` nhập từng phần, hệ thống **tự tính** `process_score`:
- 
+# Phần 6: Công thức tính điểm
+
+Mỗi học phần có **2 điểm thành phần** do 2 vai trò khác nhau nhập, và 1 điểm tổng kết do backend tự tính:
+
 | Field | Ý nghĩa | Người nhập |
 |---|---|---|
-| `attendance_score` (C.Cần) | Điểm chuyên cần | lecturer |
-| `midterm_avg` (TBCTN) | Điểm trung bình test/kiểm tra giữa kỳ | lecturer |
-| `tx1, tx2, tx3, tx4` (TX1–TX4) | Điểm thường xuyên (bài tập, quiz...) — có thể để trống nếu chưa có cột điểm đó | lecturer |
-| `process_score` (TBC) | **Tính tự động**, không cho nhập tay | hệ thống tự tính |
-| `exam_score` | Điểm thi | training_office (giữ nguyên như thiết kế trước) |
-| `total_score` | **Tính tự động** = `(process_score + exam_score) / 2` | hệ thống tự tính (giữ nguyên) |
- 
-## 6.2. Bước 1 — Tính điểm thường xuyên (TX)
- 
-Chỉ tính trung bình trên các cột TX **có điểm**, bỏ qua ô trống:
- 
-```
-TX = average(TX1, TX2, TX3, TX4)   # chỉ tính các giá trị không null
-```
- 
-Ví dụ:
-```
-TX1 = 7.2
-TX2 = 9.8
-TX3 = trống
-TX4 = trống
- 
-TX = (7.2 + 9.8) / 2 = 8.5
-```
- 
-## 6.3. Bước 2 — Tính điểm quá trình (process_score / TBC)
- 
-```
-process_score = attendance_score × 0.10
-              + midterm_avg      × 0.30
-              + TX                × 0.60
-```
- 
-| Thành phần | Trọng số |
-|---|---|
-| `attendance_score` (C.Cần) | 10% |
-| `midterm_avg` (TBCTN) | 30% |
-| `TX` | 60% |
- 
-Ví dụ:
-```
-attendance_score = 8
-midterm_avg      = 8.9
-TX                = 8.5
- 
-process_score = 8×0.10 + 8.9×0.30 + 8.5×0.60
-              = 0.8 + 2.67 + 5.1
-              = 8.57
-              → làm tròn 1 chữ số → 8.6
-```
- 
-Làm tròn:
-```
-process_score = round(process_score, 1)
-```
- 
-## 6.4. Bước 3 — Tính điểm tổng kết học phần (total_score)
- 
-Giữ nguyên công thức đã thiết kế trước — không đổi:
- 
+| `process_score` | Điểm quá trình | lecturer |
+| `exam_score` | Điểm thi | training_office |
+| `total_score` | **Tính tự động** = `(process_score + exam_score) / 2` | hệ thống tự tính |
+
+## 6.1. Điểm tổng kết học phần (`total_score`)
+
 ```
 total_score = (process_score + exam_score) / 2
 ```
- 
-## 6.5. Cập nhật mô hình dữ liệu (`Grade`)
- 
-```
-Grade
-- id
-- enrollment_id (FK, unique)
-- tx1, tx2, tx3, tx4        (nullable, do lecturer nhập)
-- attendance_score           (do lecturer nhập)
-- midterm_avg                (do lecturer nhập)
-- process_score               (tự tính từ 6.3, không nhận input trực tiếp)
-- exam_score                  (do training_office nhập, giữ nguyên)
-- total_score                  (tự tính từ 6.4, không nhận input trực tiếp)
-- updated_by, updated_at
-```
- 
-**Ràng buộc phân quyền (giữ nguyên nguyên tắc trước):**
-- Endpoint `PUT /grades/{enrollment_id}/process` — vẫn chỉ `lecturer` (đúng lớp mình dạy) được gọi, nhưng giờ nhận body gồm `tx1, tx2, tx3, tx4, attendance_score, midterm_avg` thay vì 1 số đơn — server tự tính `process_score` sau khi lưu.
-- Endpoint `PUT /grades/{enrollment_id}/exam` — không đổi, chỉ `training_office`.
-- Validate: tất cả các điểm thành phần (`tx1-4`, `attendance_score`, `midterm_avg`, `exam_score`) đều trong khoảng [0, 10].
-## 6.6. Code mẫu (`services/grade_service.py`)
- 
-```python
-def calculate_tx(tx_scores: list[float | None]) -> float | None:
-    """TX = trung bình các cột TX có điểm, bỏ qua giá trị None."""
-    valid_scores = [s for s in tx_scores if s is not None]
-    if not valid_scores:
-        return None
-    return sum(valid_scores) / len(valid_scores)
- 
- 
-def calculate_process_score(attendance_score: float, midterm_avg: float, tx: float) -> float:
-    """process_score (TBC) = C.Cần×0.10 + TBCTN×0.30 + TX×0.60"""
-    process_score = (
-        attendance_score * 0.10
-        + midterm_avg * 0.30
-        + tx * 0.60
-    )
-    return round(process_score, 1)
- 
- 
-def update_process_components(
-    db,
-    enrollment_id: int,
-    lecturer_id: int,
-    tx1: float | None = None,
-    tx2: float | None = None,
-    tx3: float | None = None,
-    tx4: float | None = None,
-    attendance_score: float | None = None,
-    midterm_avg: float | None = None,
-):
-    grade = get_or_create_grade(db, enrollment_id)
- 
-    # Cập nhật các thành phần được truyền lên (giữ giá trị cũ nếu không truyền)
-    if tx1 is not None: grade.tx1 = tx1
-    if tx2 is not None: grade.tx2 = tx2
-    if tx3 is not None: grade.tx3 = tx3
-    if tx4 is not None: grade.tx4 = tx4
-    if attendance_score is not None: grade.attendance_score = attendance_score
-    if midterm_avg is not None: grade.midterm_avg = midterm_avg
- 
-    # Tự tính lại process_score nếu đủ dữ liệu bắt buộc
-    tx = calculate_tx([grade.tx1, grade.tx2, grade.tx3, grade.tx4])
-    if grade.attendance_score is not None and grade.midterm_avg is not None and tx is not None:
-        grade.process_score = calculate_process_score(grade.attendance_score, grade.midterm_avg, tx)
- 
-    grade.updated_by = lecturer_id
-    recalculate_total(grade)  # hàm đã có ở thiết kế trước — total_score = (process+exam)/2
-    db.commit()
-    return grade
-```
- 
-## 6.7. Router cập nhật (`routers/grades.py`)
- 
-```python
-from pydantic import BaseModel
- 
-class ProcessScoreInput(BaseModel):
-    tx1: float | None = None
-    tx2: float | None = None
-    tx3: float | None = None
-    tx4: float | None = None
-    attendance_score: float | None = None
-    midterm_avg: float | None = None
- 
-@router.put("/{enrollment_id}/process")
-def set_process_components(
-    enrollment_id: int,
-    payload: ProcessScoreInput,
-    db=Depends(get_db),
-    user=Depends(require_role("lecturer")),
-):
-    for value in [payload.tx1, payload.tx2, payload.tx3, payload.tx4,
-                  payload.attendance_score, payload.midterm_avg]:
-        if value is not None and not (0 <= value <= 10):
-            raise HTTPException(status_code=400, detail="Điểm phải trong khoảng 0-10")
- 
-    enrollment = get_enrollment(db, enrollment_id)
-    course_class = get_course_class(db, enrollment.course_class_id)
-    if course_class.lecturer_id != user["user_id"]:
-        raise HTTPException(status_code=403, detail="Không phải lớp bạn phụ trách")
- 
-    return update_process_components(db, enrollment_id, user["user_id"], **payload.dict())
-```
- 
----
- 
-## 6.8. Điểm trung bình tích lũy — GPA (`Student.gpa`) — giữ nguyên như trước
+
+- Backend là nơi duy nhất tính `total_score`, tính lại mỗi khi 1 trong 2 điểm thành phần thay đổi. Client không bao giờ gửi `total_score`.
+- Chỉ khi **cả hai** `process_score` và `exam_score` đều đã có thì `total_score` mới có giá trị; thiếu 1 trong 2 → `total_score = null`.
+- Từ `total_score`, backend quy đổi ra **điểm chữ + điểm hệ 4** và trạng thái Đạt/Không đạt (bảng quy đổi ở mục 9.3). Frontend chỉ hiển thị, không tự suy ra từ điểm số.
+
+## 6.2. Điểm trung bình tích lũy — GPA (`Student.gpa`)
  
 ```
 GPA = Σ(total_score_i × credits_i) / Σ(credits_i)

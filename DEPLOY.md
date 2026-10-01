@@ -71,7 +71,7 @@ Bối cảnh: không có GPU/server mạnh, chỉ có máy tính thường — �
 | `VOYAGE_API_KEY` | Key Voyage AI — **BẮT BUỘC** cho chatbot quy chế: embedding duy nhất (nhúng câu hỏi + nhúng chunk khi rebuild vector store). Voyage chỉ tạo vector, KHÔNG sinh câu trả lời |
 | `VOYAGE_MODEL` | Model embedding, mặc định `voyage-4` (không đặt cũng được). **Đổi model này là phải rebuild vector store** (`python scripts/rebuild_vector_store.py`) — mỗi model là một không gian vector riêng |
 | `OPENROUTER_API_KEY` | Key OpenRouter — **LLM chính của chatbot quy chế** (bắt buộc cho chatbot; Gemini bên dưới là dự phòng) |
-| `OPENROUTER_MODEL` | Mặc định `nvidia/nemotron-3-super-120b-a12b:free` (không đặt cũng được) |
+| `OPENROUTER_MODEL` | Mặc định `nvidia/nemotron-3.5-lightning:free` (không đặt cũng được) |
 | `GOOGLE_API_KEY` | Key Gemini — vẫn **BẮT BUỘC**: LLM chính của 2 chức năng AI dạng JSON (tư vấn đăng ký, tóm tắt học tập) + **dự phòng** cho chatbot quy chế khi OpenRouter lỗi/rate-limit |
 | `GEMINI_MODEL` | Mặc định `gemini-2.0-flash` |
 | `CORS_ORIGINS` | Danh sách origin được phép, phân tách bằng dấu phẩy — **bắt buộc có domain Vercel** |
@@ -148,7 +148,7 @@ CORS_ORIGINS=http://localhost:5173,https://unimind.vercel.app
 
 Hướng chốt (2026-08-17): **2 vai trò độc lập** — embedding **chỉ Voyage AI**, sinh câu trả lời **chỉ OpenRouter/Gemini** (Voyage không sinh văn bản; OpenRouter/Gemini không tạo vector). Riêng chatbot quy chế: **OpenRouter là LLM chính, Gemini là dự phòng**. Toàn bộ logic gom ở 2 điểm vào duy nhất `call_llm_json` / `call_llm_text` trong `app/services/llm_service.py` (httpx async, không SDK):
 
-- **OpenRouter (chính cho chatbot quy chế)** — key đặt ở `OPENROUTER_API_KEY`, model trong biến `OPENROUTER_MODEL` (mặc định `nvidia/nemotron-3-super-120b-a12b:free`); gọi REST `chat/completions` chuẩn OpenAI-compatible.
+- **OpenRouter (chính cho chatbot quy chế)** — key đặt ở `OPENROUTER_API_KEY`, model trong biến `OPENROUTER_MODEL` (mặc định `nvidia/nemotron-3.5-lightning:free`); gọi REST `chat/completions` chuẩn OpenAI-compatible.
 - **Gemini (dự phòng)** — code tự chuyển sang khi OpenRouter lỗi: HTTP ≠ 200, hết quota (429), hoặc timeout (helper `_check_gemini_finished` vẫn giữ để lọc câu trả lời rỗng do bộ lọc an toàn chặn). Key `GOOGLE_API_KEY` (chấp nhận cả tên cũ `GEMINI_API_KEY`), model `GEMINI_MODEL` (mặc định `gemini-2.0-flash`).
 - **Ngoại lệ — 2 chức năng AI dạng JSON** (tư vấn đăng ký, tóm tắt học tập qua `call_llm_json`): vẫn chạy **Gemini trước → OpenRouter fallback** vì đã ổn định; chỉ chatbot quy chế (dạng văn bản tự do) dùng thứ tự OpenRouter trước.
 - **Không dùng Groq** — không cần thêm tài khoản/key thứ 3, hướng OpenRouter→Gemini đã đủ độ dự phòng cho demo.
@@ -161,7 +161,8 @@ Hai "Hướng A/B" trong bản kế hoạch cũ (deploy service RAG riêng / g�
 - Pipeline RAG **nằm ngay trong backend chính**: `app/services/rag_service.py` nối FastAPI → `src/rag/` (ChromaDB + prompt + LLM qua httpx, không dùng LangChain). Không có service thứ hai, không HTTP nội bộ.
 - **ChromaDB persist** trong `backend/vectorstore/` — **đã commit vào git** (gồm `chroma.sqlite3` + HNSW index). Deploy từ GitHub là có sẵn, không cần build lại.
 - **Embedding câu hỏi gọi qua Voyage AI API** (`voyage-4`, `app/services/embedding_service.py` — httpx, async, retry 429/5xx tối đa 2 lần) thay vì tải model local: đây là thay đổi quyết định giúp chatbot chạy được trên Render free 512MB. Nhúng câu hỏi dùng `input_type="query"` (khác `"document"` lúc build index — Voyage tối ưu retrieval bất đối xứng). Retrieval cần `VOYAGE_API_KEY`; LLM trả lời dùng OpenRouter → fallback Gemini.
-- **Chống bịa (anti-hallucination):** câu hỏi không khớp chunk nào → trả thẳng "không tìm thấy thông tin trong quy chế" và **không gọi LLM**.
+- **Chống bịa (anti-hallucination):** LLM luôn được gọi và tự quyết định câu trả lời theo quy tắc 3 của `SYSTEM_PROMPT` (`src/rag/prompts.py`) — ngữ cảnh không đủ thì trả "không tìm thấy thông tin trong quy chế". Phía server còn một nhánh trả thẳng câu đó mà **không gọi LLM** khi Chroma không trả chunk nào (`rag_service.py`), nhưng thực tế gần như không chạy vì top-k luôn trả đủ chunk.
+- **Lọc nguồn trích dẫn theo ngưỡng tương đồng:** `RETRIEVER_MAX_DISTANCE` (mặc định `0.65`, cosine distance) — chỉ chunk đủ gần câu hỏi mới vào khối "nguồn trích dẫn". Nhờ vậy "xin chào" hay câu ngoài phạm vi không hiện trích dẫn (LLM vẫn chào lại / báo không tìm thấy bình thường). Ngưỡng chỉ ảnh hưởng **số nguồn hiển thị**, không ảnh hưởng câu trả lời: ngữ cảnh gửi LLM vẫn là toàn bộ top-k. Chỉnh được bằng biến môi trường trên Render, không cần sửa code hay rebuild index.
 - Endpoint `POST /ai/regulation-chat` trả `answer` + `sources` (Điều/Khoản/trang) + `provider`/`model`; ngữ cảnh hội thoại giữ server-side theo `session_id`. (Dropdown provider/model trên frontend được nhận để tương thích API nhưng model trả lời luôn theo cấu hình .env: OpenRouter chính, Gemini fallback.)
 
 > Nếu sau này muốn "gọn kiến trúc" cho báo cáo/slide: phương án pgvector trên Supabase vẫn để ngỏ nhưng **không cần làm** — cách hiện tại đã 0đ và chạy ổn định.
@@ -169,6 +170,47 @@ Hai "Hướng A/B" trong bản kế hoạch cũ (deploy service RAG riêng / g�
 **Cập nhật quy chế mới (quy trình chuẩn):** đặt DOCX vào `backend/data/raw/` → chạy `python scripts/rebuild_vector_store.py` ở máy local (cần `VOYAGE_API_KEY`; script nhúng toàn bộ chunk qua Voyage `input_type="document"` rồi mới xóa index cũ — lỗi giữa chừng thì vector store cũ vẫn nguyên) → commit thư mục `backend/vectorstore/` → push, Render tự redeploy với index mới. (Tài liệu gốc DOCX/PDF không nằm trong repo — chỉ có index đã build.)
 
 ---
+
+## 5b. Cache Redis (Render Key Value) — khuyến nghị cho production
+
+Toàn bộ logic cache nằm trong `backend/app/core/cache.py`. Redis là cache dùng chung giữa các worker; Redis không phải nguồn dữ liệu nghiệp vụ.
+
+**Nguyên tắc:** Redis lỗi/timeout chỉ tạo cache miss và request đọc lại DB/API. Khi `REDIS_URL` trống ở local, ứng dụng dùng cache RAM giới hạn; khi Redis đã cấu hình nhưng tạm lỗi, không dùng cache RAM riêng của worker để tránh dữ liệu lệch.
+
+### Bật cache dùng chung trên production
+
+1. Render dashboard → **New → Key Value**, chọn cùng region với web service.
+2. Copy **Internal Key Value URL** và đặt vào biến `REDIS_URL` trong Environment của web service.
+3. Redeploy. Log `Redis cache = ON` chỉ cho biết đã cấu hình URL, không thay thế health check.
+4. Không ghi URL/password vào git hoặc log. Redis restart làm mất cache thì ứng dụng tự query lại nguồn dữ liệu thật.
+
+| Chế độ | Khi dùng | Hành vi |
+|---|---|---|
+| `REDIS_URL` trống | local/test | Cache RAM giới hạn theo process |
+| `REDIS_URL` có giá trị | production | Redis dùng chung; lỗi Redis → bypass cache |
+
+### Cache và invalidation
+
+TTL chính: catalog 10 phút, class list 60 giây, student/AI payload 5 phút, stats 10 phút, retrieval/chat 24 giờ. Embedding không đặt TTL vì vector bất biến theo model; đổi model hoặc index phải bump revision/cache version.
+
+Mọi key có prefix `ql:v1:`. Cache-aside: hit → trả cache; miss → query DB/API → set cache. Invalidation chạy sau commit. Đăng ký/overselling luôn kiểm tra DB trong transaction, không dựa vào cache sĩ số.
+
+- `invalidate_catalog()`: danh mục, lớp học phần, AI payload và stats.
+- `invalidate_class_caches()`: lớp học phần, lịch, enrollment payload, AI payload và stats.
+- `invalidate_after_enrollment_change()`: dữ liệu sinh viên, lịch, advice, lớp học phần và stats.
+- `invalidate_after_grade_change()`: điểm/GPA, AI summary/overview, lớp học phần và stats.
+- `invalidate_homeroom_rosters()`: danh mục lớp/cố vấn, AI payload và stats.
+
+Redis outage có circuit breaker 30 giây; sau khi kết nối lại, các nhóm cache phụ thuộc DB được dọn để loại invalidation bị bỏ lỡ. Đây là best-effort, không thay thế TTL hay tính đúng đắn của DB.
+
+### Vận hành
+
+- Xem key: `redis-cli -u "$REDIS_URL" --scan --pattern 'ql:v1:*'`.
+- Xả cache an toàn: bump `CACHE_VERSION` rồi redeploy; không dùng `FLUSHALL` trên Redis dùng chung.
+- Test: `python -m pytest tests/test_cache.py tests/test_cache_resilience.py` — không cần Redis thật.
+
+---
+
 
 ## 6. Tóm tắt domain/dịch vụ sử dụng
 
@@ -179,6 +221,7 @@ Hai "Hướng A/B" trong bản kế hoạch cũ (deploy service RAG riêng / g�
 | Database | Supabase | Free tier |
 | LLM | OpenRouter model `:free` (chính) / Gemini free (dự phòng) | Free tier |
 | Vector store (RAG) | ChromaDB dựng sẵn trong repo (nhúng Voyage `voyage-4`); embedding câu hỏi gọi Voyage API lúc runtime | Free tier (Voyage free có quota đủ cho demo) |
+| Cache | Redis/Render Key Value (khuyến nghị production) — local có thể để trống `REDIS_URL` | Cache best-effort, không persistence |
 
 **Tổng chi phí dự kiến: 0đ** trong phạm vi free tier — phù hợp quy mô đồ án, không cần đầu tư server riêng.
 
@@ -215,6 +258,7 @@ Hai "Hướng A/B" trong bản kế hoạch cũ (deploy service RAG riêng / g�
 - [ ] `CORS_ORIGINS` trên Render chứa **đúng** domain Vercel (và localhost nếu vẫn muốn dev).
 - [ ] `VITE_API_BASE_URL` đã đặt trên Vercel và đã redeploy sau khi đặt.
 - [ ] Secrets (`SECRET_KEY`, `VOYAGE_API_KEY`, `OPENROUTER_API_KEY`, `GOOGLE_API_KEY`, `SUPABASE_DB_URL`) không nằm trong git — chỉ trong `.env` local + dashboard Render/Vercel.
+- [ ] `REDIS_URL` đã đặt trên Render nếu deploy production nhiều worker hoặc muốn cache dùng chung; đặt trong dashboard, không commit URL. Local/test có thể để trống.
 
 **Dữ liệu & chức năng**
 - [ ] Chạy `scripts/smoke.py` với `SMOKE_BASE=https://<name>.onrender.com` trước ngày demo.

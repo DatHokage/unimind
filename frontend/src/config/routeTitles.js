@@ -9,7 +9,6 @@ export const PAGE_META = {
   "/student": { title: "Tổng quan" },
   "/student/schedule": { title: "Thời khóa biểu" },
   "/student/register": { title: "Đăng ký học phần" },
-  "/student/advice": { title: "Tư vấn đăng ký" },
   "/student/enrollments": { title: "Đăng ký của tôi" },
   "/student/grades": { title: "Bảng điểm" },
   "/student/chat": { title: "Hỏi đáp quy chế" },

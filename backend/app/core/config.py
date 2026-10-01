@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # Database (Supabase Postgres)
     SUPABASE_DB_URL: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/postgres"
 
+    # Cache Redis (tùy chọn): Render **Key Value** instance cùng region — dán
+    # "Internal Key Value URL" (dạng `redis://red-xxxx:6379`, không cần password
+    # khi kết nối nội bộ). Để TRỐNG khi local dev → app/core/cache.py tự fallback
+    # cache in-memory, không cần cài Redis.
+    REDIS_URL: str = ""
+
     # JWT
     SECRET_KEY: str = "dev-secret-key-change-me"
     ALGORITHM: str = "HS256"
@@ -48,7 +54,7 @@ class Settings(BaseSettings):
     # ② LLM SINH CÂU TRẢ LỜI — OpenRouter (chính), Gemini (dự phòng).
     # Chỉ nhận text thô (chunk + câu hỏi), không dùng để tạo vector.
     OPENROUTER_API_KEY: str = ""
-    OPENROUTER_MODEL: str = "nvidia/nemotron-3-super-120b-a12b:free"
+    OPENROUTER_MODEL: str = "nvidia/nemotron-3.5-lightning:free"
     # Gemini: chấp nhận cả 2 tên biến trong .env — GOOGLE_API_KEY (chuẩn của
     # SDK Google) hoặc GEMINI_API_KEY (tên cũ của dự án). Đặt biến nào cũng
     # được. Với chatbot quy chế, Gemini là LLM dự phòng khi OpenRouter lỗi.
@@ -97,6 +103,13 @@ class Settings(BaseSettings):
                 )
         else:
             print(f"[config] DB URL scheme = {scheme!r}", flush=True)
+        # Cache: Redis production dùng chung giữa các worker; khi REDIS_URL lỗi,
+        # cache.py bypass để request đọc lại nguồn dữ liệu thật.
+        print(
+            "[config] Redis cache = "
+            + ("ON" if self.REDIS_URL else "OFF (REDIS_URL trống — cache in-memory)"),
+            flush=True,
+        )
 
 
 settings = Settings()

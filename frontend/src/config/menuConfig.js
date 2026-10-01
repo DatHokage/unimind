@@ -3,7 +3,6 @@ import {
   Table,
   ClipboardList,
   Award,
-  Sparkles,
   MessageCircle,
   BookOpen,
   NotebookPen,
@@ -38,8 +37,6 @@ export const MENU = {
     {
       title: "Trợ lý AI",
       items: [
-        // Route riêng — AI chỉ phân tích khi người dùng nhấn nút "Nhận tư vấn"
-        { to: "/student/advice", icon: Sparkles, label: "Tư vấn đăng ký" },
         { to: "/student/chat", icon: MessageCircle, label: "Hỏi đáp quy chế" },
       ],
     },

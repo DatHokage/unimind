@@ -1,8 +1,9 @@
 """Gọi LLM qua httpx (async, không dùng SDK).
 
 Với chatbot quy chế (RAG) — vai trò ② sinh câu trả lời, KHÔNG tạo vector:
-ưu tiên OpenRouter (OPENROUTER_MODEL đổi tự do qua .env, kể cả model :free);
-OpenRouter lỗi/rate-limit/không key thì fallback sang Gemini — không để lỗi
+model do người dùng chọn ở dropdown là model trả lời; không chọn gì thì mặc
+định Gemini (GEMINI_MODEL trong .env) và OpenRouter là dự phòng. Provider đang
+gọi lỗi/rate-limit/không key thì tự chuyển sang provider còn lại — không để lỗi
 lan tới người dùng nếu còn phương án dự phòng.
 
 Tư vấn học phần / tóm tắt học tập (ai_service.py — JSON output) giữ thứ tự
@@ -176,6 +177,26 @@ def _strip_trailing_notes(text: str) -> str:
     return cleaned.strip()
 
 
+_PROVIDERS = ("gemini", "openrouter")
+
+
+def _attempts(provider: str = "", model: str = "") -> list[tuple[str, str]]:
+    """Danh sách (provider, model) theo thứ tự gọi cho một lượt hỏi.
+
+    Provider được chọn chạy trước, provider còn lại là dự phòng; không chọn gì
+    thì giữ thứ tự mặc định (Gemini trước, OpenRouter sau).
+
+    CHỈ provider được chọn nhận model id từ client — model id thuộc không gian
+    tên của một provider, gửi id của provider này cho provider kia sẽ lỗi. Nên
+    provider dự phòng luôn nhận chuỗi rỗng để tự dùng model trong .env.
+    """
+    order = list(_PROVIDERS)
+    if provider in _PROVIDERS:
+        order.remove(provider)
+        order.insert(0, provider)
+    return [(p, model if p == provider else "") for p in order]
+
+
 def _as_text(data: dict, path: str) -> str:
     """Bóc chuỗi văn bản theo chuỗi key, ví dụ ["candidates", 0, "content"]."""
     cur = data
@@ -191,21 +212,24 @@ def _as_text(data: dict, path: str) -> str:
     return cur
 
 
-async def _call_chat_text(provider: str, prompt: str, system: str = "") -> tuple[str, str, str]:
+async def _call_chat_text(provider: str, prompt: str, system: str = "",
+                          model: str = "") -> tuple[str, str, str]:
     """Gọi 1 provider chat completion, trả (text, provider, model).
 
     system: tin nhắn hệ thống riêng; để trống = ghép vào đầu user prompt
     (dùng cho provider không hỗ trợ role system như Gemini).
+    model: model id do client chọn ở dropdown; để trống = model trong .env.
     """
     if provider == "openrouter":
         if not settings.OPENROUTER_API_KEY:
             raise LLMError("Chưa cấu hình OPENROUTER_API_KEY")
+        model = model or settings.OPENROUTER_MODEL
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
         body = {
-            "model": settings.OPENROUTER_MODEL,
+            "model": model,
             "messages": messages,
             "temperature": 0.2,
             "max_tokens": 4096,
@@ -220,14 +244,15 @@ async def _call_chat_text(provider: str, prompt: str, system: str = "") -> tuple
         if response.status_code != 200:
             raise LLMError(f"OpenRouter API trả về HTTP {response.status_code}: {response.text[:300]}")
         text = _as_text(response.json(), ["choices", 0, "message", "content"])
-        return _strip_trailing_notes(text), "openrouter", settings.OPENROUTER_MODEL
+        return _strip_trailing_notes(text), "openrouter", model
 
     if provider == "gemini":
         api_key = settings.gemini_api_key
         if not api_key:
             raise LLMError("Chưa cấu hình GOOGLE_API_KEY (hoặc GEMINI_API_KEY)")
+        model = model or settings.GEMINI_MODEL
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
-        url = GEMINI_URL.format(model=settings.GEMINI_MODEL)
+        url = GEMINI_URL.format(model=model)
         body = {
             "contents": [{"parts": [{"text": full_prompt}]}],
             "generationConfig": {"temperature": 0.2},
@@ -240,33 +265,174 @@ async def _call_chat_text(provider: str, prompt: str, system: str = "") -> tuple
         data = response.json()
         _check_gemini_finished(data)
         text = _as_text(data, ["candidates", 0, "content", "parts", 0, "text"])
-        return _strip_trailing_notes(text), "gemini", settings.GEMINI_MODEL
+        return _strip_trailing_notes(text), "gemini", model
 
     raise LLMError(f"Provider không hỗ trợ: {provider}")
 
 
-async def call_openrouter_text(prompt: str, system: str = "") -> tuple[str, str, str]:
-    """OpenRouter chat completion trả văn bản thường. Trả (text, provider, model)."""
-    return await _call_chat_text("openrouter", prompt, system)
+async def call_llm_text(prompt: str, system: str = "",
+                        provider: str = "", model: str = "") -> tuple[str, str, str]:
+    """Gọi LLM trả văn bản thường cho chatbot quy chế.
 
-
-async def call_gemini_text(prompt: str, system: str = "") -> tuple[str, str, str]:
-    """Gemini generateContent trả văn bản thường. Trả (text, provider, model)."""
-    return await _call_chat_text("gemini", prompt, system)
-
-
-async def call_llm_text(prompt: str, system: str = "") -> tuple[str, str, str]:
-    """Gọi LLM trả văn bản thường cho chatbot quy chế: OpenRouter TRƯỚC
-    (model cấu hình trong OPENROUTER_MODEL — đổi tự do, kể cả model :free),
-    OpenRouter lỗi/rate-limit thì fallback Gemini.
+    provider/model: lựa chọn từ dropdown trên web (đã qua resolve_selection).
+    Để trống = dùng mặc định: Gemini TRƯỚC (GEMINI_MODEL trong .env), lỗi thì
+    fallback OpenRouter. Chọn provider nào thì provider đó chạy trước, provider
+    còn lại là dự phòng.
 
     Trả (text, provider, model) — provider/model thực tế trả lời để ghi vào kết
     quả chatbot quy chế. Ném LLMError nếu cả hai thất bại/không có key.
     """
     errors = []
-    for provider in ("openrouter", "gemini"):
+    for p, sel in _attempts(provider, model):
         try:
-            return await _call_chat_text(provider, prompt, system)
+            return await _call_chat_text(p, prompt, system, sel)
         except LLMError as e:
-            errors.append(f"{provider}: {e}")
+            errors.append(f"{p}: {e}")
+    raise LLMError(" | ".join(errors))
+
+
+# ---------------------------------------------------------------------------
+# Streaming (SSE) — bản "chảy từng mảnh" của call_llm_text cho chatbot quy chế.
+# Fallback chỉ xảy ra TRƯỚC mảnh chữ đầu tiên: provider đang gọi lỗi lúc kết nối
+# thì thử provider còn lại; đã bắn chữ rồi mà đứt thì lỗi lan lên (không đổi
+# model giữa chừng).
+# ---------------------------------------------------------------------------
+
+GEMINI_STREAM_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/{model}"
+    ":streamGenerateContent?alt=sse"
+)
+
+
+async def _stream_openrouter_text(prompt: str, system: str = "",
+                                  info: dict | None = None, model: str = ""):
+    """Yield từng mảnh chữ từ OpenRouter (stream: true, SSE dạng `data: {...}`).
+
+    model: model id client chọn; để trống = OPENROUTER_MODEL trong .env.
+    """
+    if not settings.OPENROUTER_API_KEY:
+        raise LLMError("Chưa cấu hình OPENROUTER_API_KEY")
+    model = model or settings.OPENROUTER_MODEL
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    body = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.2,
+        "max_tokens": 4096,
+        "stream": True,
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+        "HTTP-Referer": "http://localhost:5173",
+        "X-Title": "He thong Quan ly Dao tao",
+    }
+    async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+        async with client.stream("POST", OPENROUTER_URL, json=body, headers=headers) as response:
+            if response.status_code != 200:
+                raw = (await response.aread()).decode("utf-8", "replace")
+                raise LLMError(
+                    f"OpenRouter API trả về HTTP {response.status_code}: {raw[:300]}")
+            got_any = False
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                payload = line[len("data: "):].strip()
+                if payload == "[DONE]":
+                    break
+                try:
+                    data = json.loads(payload)
+                except ValueError:
+                    continue
+                # delta.content có thể None (chunk đầu chỉ mang role)
+                delta = ((data.get("choices") or [{}])[0].get("delta") or {}).get("content")
+                if delta:
+                    if not got_any and info is not None:
+                        info.update(provider="openrouter", model=model)
+                    got_any = True
+                    yield delta
+            if not got_any:
+                raise LLMError("OpenRouter API stream không trả nội dung nào")
+
+
+async def _stream_gemini_text(prompt: str, system: str = "",
+                              info: dict | None = None, model: str = ""):
+    """Yield từng mảnh chữ từ Gemini streamGenerateContent (alt=sse).
+
+    Mỗi event SSE là một response generateContent đầy đủ dạng JSON — phần mới
+    nằm ở candidates[0].content.parts[*].text (có thể nhiều parts trong 1 chunk).
+    """
+    api_key = settings.gemini_api_key
+    if not api_key:
+        raise LLMError("Chưa cấu hình GOOGLE_API_KEY (hoặc GEMINI_API_KEY)")
+    model = model or settings.GEMINI_MODEL
+    full_prompt = f"{system}\n\n{prompt}" if system else prompt
+    url = GEMINI_STREAM_URL.format(model=model)
+    body = {
+        "contents": [{"parts": [{"text": full_prompt}]}],
+        "generationConfig": {"temperature": 0.2},
+    }
+    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
+        async with client.stream("POST", url, json=body,
+                                 headers={"x-goog-api-key": api_key}) as response:
+            if response.status_code != 200:
+                raw = (await response.aread()).decode("utf-8", "replace")
+                raise LLMError(
+                    f"Gemini API trả về HTTP {response.status_code}: {raw[:300]}")
+            got_any = False
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    data = json.loads(line[len("data: "):].strip())
+                except ValueError:
+                    continue
+                if data.get("error"):
+                    raise LLMError(
+                        f"Gemini API stream lỗi: {data['error'].get('message', '')}")
+                candidates = data.get("candidates") or []
+                parts = ((candidates[0].get("content") or {}).get("parts")
+                         if candidates else None) or []
+                text = "".join(p.get("text", "") for p in parts)
+                if text:
+                    if not got_any and info is not None:
+                        info.update(provider="gemini", model=model)
+                    got_any = True
+                    yield text
+            if not got_any:
+                raise LLMError("Gemini API stream không trả nội dung nào")
+
+
+async def stream_llm_text(prompt: str, system: str = "",
+                          info: dict | None = None,
+                          provider: str = "", model: str = ""):
+    """Bản streaming của call_llm_text — yield từng mảnh chữ ngay khi LLM sinh ra.
+
+    info: dict tùy chọn, được ghi (provider, model) của provider THỰC TẾ trả lời
+    ngay khi mảnh đầu xuất hiện (người gọi đọc lại sau khi stream xong — cần vì
+    generator không trả giá trị như call_llm_text).
+
+    provider/model: lựa chọn từ dropdown trên web. Để trống = Gemini trước rồi
+    OpenRouter (model theo .env); chọn provider nào thì provider đó chạy trước,
+    provider còn lại là dự phòng với model mặc định trong .env.
+
+    Ném LLMError khi: cả hai provider đều lỗi trước khi bắn mảnh nào (được
+    fallback qua nhau như call_llm_text), hoặc provider đang stream đứt giữa
+    chừng sau khi đã yield (lỗi lan thẳng lên — không fallback được nữa).
+    """
+    fns = {"openrouter": _stream_openrouter_text, "gemini": _stream_gemini_text}
+    errors: list[str] = []
+    for label, sel in _attempts(provider, model):
+        yielded = False
+        try:
+            async for chunk in fns[label](prompt, system, info, sel):
+                yielded = True
+                yield chunk
+            return
+        except LLMError as e:
+            if yielded:
+                raise LLMError(f"{label} đứt giữa chừng: {e}") from e
+            errors.append(f"{label}: {e}")
     raise LLMError(" | ".join(errors))

@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.cache import TTL_CATALOG, build_key, invalidate_catalog, cache
 from app.core.database import get_db
 from app.dependencies.auth_dependency import require_role
 from app.models import Advisor, HomeroomClass
@@ -78,11 +80,20 @@ def list_all_advisors(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office")),
 ):
-    """Toàn bộ cố vấn (không phân trang) — phục vụ dropdown chọn cố vấn cho lớp hành chính."""
+    """Toàn bộ cố vấn (không phân trang) — phục vụ dropdown chọn cố vấn cho lớp hành chính.
+
+    Cache-aside TTL_CATALOG; CRUD cố vấn gọi invalidate_catalog().
+    """
+    key = build_key("cat", "advisors", "all")
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
     advisors = db.scalars(
         select(Advisor).options(_ADVISOR_LOADS).order_by(Advisor.code)
     ).all()
-    return [_advisor_out(a) for a in advisors]
+    payload = jsonable_encoder([_advisor_out(a) for a in advisors])
+    cache.set_json(key, payload, ttl=TTL_CATALOG)
+    return payload
 
 
 @router.post("", response_model=AdvisorOut, status_code=201)
@@ -106,6 +117,7 @@ def create_advisor(
         )
     db.commit()
     db.refresh(advisor)
+    invalidate_catalog()
     return _advisor_out(advisor)
 
 
@@ -142,6 +154,7 @@ def update_advisor(
         setattr(advisor, field, value)
     db.commit()
     db.refresh(advisor)
+    invalidate_catalog()
     return _advisor_out(advisor)
 
 
@@ -165,4 +178,5 @@ def delete_advisor(
         )
     db.delete(advisor)
     db.commit()
+    invalidate_catalog()
     return {"detail": f"Đã xóa cố vấn {advisor.code}"}

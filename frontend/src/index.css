@@ -320,13 +320,13 @@ body {
    translateX neo MÉP GẦN (phía mặt trời) đúng tại chỗ tiếp xúc bàn:
    mép trái local x = −a sau scale về lại −a ⇒ tx = a(1 − 1/scale)
    (a = 50% bề rộng fill-box). Nhờ vậy bóng chỉ mọc ĐUÔI ra xa nắng,
-   không bao giờ bong khỏi chân vật như elip trôi. Scale ngang ∈ [1..2] —
+   không bao giờ bong khỏi chân vật như elip trôi. Scale ngang ∈ [1..1.3] —
    trưa nắng bóng ≈ chu vi đáy vật, không bao giờ co nhỏ hơn vật; trời thấp
    bóng dài kèm dày ngang nhẹ (penumbra loang) và NHẠT đi (năng lượng trải
    trên diện tích lớn hơn). */
 .desk-shadow {
-  --sh: 10px; /* biên độ lệch tâm tối đa — như nhau cho mọi vật */
-  --sscale: calc(1 + var(--sgrow, 0));
+  --sh: 5px; /* biên độ lệch tâm tối đa — như nhau cho mọi vật */
+  --sscale: calc(1 + var(--sgrow, 0) * 0.3);
   transform-box: fill-box;
   transform-origin: center;
   transform: rotate(var(--srot, 0deg))

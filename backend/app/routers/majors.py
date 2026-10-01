@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.cache import TTL_CATALOG, build_key, invalidate_catalog, cache
 from app.core.database import get_db
 from app.dependencies.auth_dependency import require_role
 from app.models import HomeroomClass, Major, Student
@@ -47,8 +49,19 @@ def list_all_majors(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office", "advisor", "lecturer", "student")),
 ):
-    """Toàn bộ ngành học (không phân trang) — chỉ dùng cho dropdown/select của form."""
-    return db.scalars(select(Major).order_by(Major.code)).all()
+    """Toàn bộ ngành học (không phân trang) — chỉ dùng cho dropdown/select của form.
+
+    Cache-aside TTL_CATALOG: dropdown này hầu như trang nào cũng gọi; CRUD ngành
+    gọi invalidate_catalog() xóa nhóm cat: nên không sợ dữ liệu cũ.
+    """
+    key = build_key("cat", "majors", "all")
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
+    majors = db.scalars(select(Major).order_by(Major.code)).all()
+    payload = jsonable_encoder(majors)
+    cache.set_json(key, payload, ttl=TTL_CATALOG)
+    return payload
 
 
 @router.post("", response_model=MajorOut, status_code=201)
@@ -63,6 +76,7 @@ def create_major(
     db.add(major)
     db.commit()
     db.refresh(major)
+    invalidate_catalog()
     return major
 
 
@@ -78,6 +92,7 @@ def update_major(
         setattr(major, field, value)
     db.commit()
     db.refresh(major)
+    invalidate_catalog()
     return major
 
 
@@ -105,4 +120,5 @@ def delete_major(
         )
     db.delete(major)
     db.commit()
+    invalidate_catalog()
     return {"detail": f"Đã xóa ngành {major.code}"}

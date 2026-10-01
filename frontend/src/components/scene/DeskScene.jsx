@@ -256,9 +256,10 @@ export default function DeskScene({ reduced = false }) {
       const shadDy = (objY - sunY) * 0.35; // nén trục đứng — mặt bàn nhìn từ trên
       const shadLen = Math.hypot(shadDx, shadDy) || 1;
       const low = 1 - elev; // 0 trưa (bóng sát đáy vật) → 1 rìa trời (dài, nhạt)
+      const shadowGrow = low * 0.55; // Giới hạn bóng buổi sáng/tối để không kéo quá dài
       setRoot("--srot", `${((Math.atan2(shadDy / shadLen, shadDx / shadLen) * 180) / Math.PI).toFixed(2)}deg`);
-      setRoot("--sgrow", low.toFixed(3));
-      setRoot("--scot", (low * 1.2).toFixed(3));
+      setRoot("--sgrow", shadowGrow.toFixed(3));
+      setRoot("--scot", (shadowGrow * 1.2).toFixed(3));
       setRoot(
         "--ambient",
         `rgba(${d.amb[0].toFixed(0)},${d.amb[1].toFixed(0)},${d.amb[2].toFixed(0)},${d.amb[3].toFixed(3)})`

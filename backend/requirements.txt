@@ -22,3 +22,9 @@ pytest
 # LLM gọi qua HTTP thuần (httpx): OpenRouter + Gemini — KHÔNG cần SDK google.
 chromadb>=1.0
 python-docx>=1.1
+
+# ====== CACHE REDIS ======
+# Redis dùng chung trên Render production; local REDIS_URL trống vẫn dùng cache RAM giới hạn.
+redis>=5.0
+# Redis giả cho pytest — test_cache.py chạy được mà không cần Redis thật.
+fakeredis

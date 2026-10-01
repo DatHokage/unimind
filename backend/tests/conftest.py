@@ -3,6 +3,8 @@ import os
 
 # Test: không khởi động thread warm-up RAG (tránh mở ChromaDB + gọi API Voyage/LLM)
 os.environ["RAG_WARMUP"] = "0"
+# Override cả .env trước khi import settings: pytest không kết nối Redis thật.
+os.environ["REDIS_URL"] = ""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +12,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.cache import _MEMORY_ONLY, cache as app_cache
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password
 from app.main import app
@@ -29,6 +32,17 @@ from app.models import (
     User,
 )
 from app.services.grade_service import recalculate_total
+
+
+@pytest.fixture(autouse=True)
+def _clean_cache(monkeypatch):
+    """Force the application singleton to memory; never clear external Redis."""
+    monkeypatch.setattr(app_cache, "_redis", _MEMORY_ONLY)
+    monkeypatch.setattr(app_cache, "_memory", {})
+    monkeypatch.setattr(app_cache, "_redis_failed_until", 0.0)
+    monkeypatch.setattr(app_cache, "_needs_cleanup", False)
+    monkeypatch.setattr(app_cache, "_redis_failure_logged", False)
+    yield
 
 
 @pytest.fixture()

@@ -1,9 +1,11 @@
 """Dựng payload cho AI từ DB — chỉ truy vấn dữ liệu của sinh viên được yêu cầu,
 không bao giờ đưa dữ liệu sinh viên khác vào prompt (mục 7 đặc tả)."""
 
+import anyio
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.cache import TTL_AI_PAYLOAD, cache
 from app.core.config import settings
 from app.models import Course, CourseClass, Enrollment, Grade, Student
 from app.services.course_service import get_prerequisite_ids
@@ -48,6 +50,14 @@ def _grade_map(db: Session, student_id: int) -> dict[int, Grade]:
 def build_course_advice_payload(
     db: Session, student_id: int, target_year: int | None = None, target_term: int | None = None
 ) -> dict:
+    # Payload cache TTL_AI_PAYLOAD: với mỗi lớp đang mở phải chạy ~6-8 query
+    # (tiên quyết, sĩ số, điểm đã qua...) — phần đắt nhất của tư vấn AI. Chỉ
+    # cache SỐ LIỆU, câu trả lời LLM luôn sinh mới. Đăng ký/hủy/CRUD lớp đều
+    # xóa key này (xem invalidate_after_enrollment_change / invalidate_class_caches).
+    cache_key = f"aipayload:advice:{student_id}:{target_year or ''}:{target_term or ''}"
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
     student = db.get(Student, student_id)
     enrollments = db.scalars(
         select(Enrollment).where(Enrollment.student_id == student_id)
@@ -103,15 +113,21 @@ def build_course_advice_payload(
             }
         )
 
-    return {
+    payload = {
         "student": _student_brief(db, student),
         "passed_courses": passed,
         "taken_not_passed": taken_not_passed,
         "open_course_classes": open_payload,
     }
+    cache.set_json(cache_key, payload, ttl=TTL_AI_PAYLOAD)
+    return payload
 
 
 def build_study_summary_payload(db: Session, student_id: int) -> dict:
+    cache_key = f"aipayload:summary:{student_id}"
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
     student = db.get(Student, student_id)
     enrollments = db.scalars(
         select(Enrollment).where(Enrollment.student_id == student_id)
@@ -147,13 +163,15 @@ def build_study_summary_payload(db: Session, student_id: int) -> dict:
         term_list.append(term)
 
     gpa4, _, _, _ = compute_gpa(db, student_id)
-    return {
+    payload = {
         "student": _student_brief(db, student),
         "terms": term_list,
         "low_score_courses": low_score_courses,
         # GPA hệ 4 theo tín chỉ (chỉ HP tính vào GPA) — không lấy trung bình đơn giản
         "overall_gpa": gpa4,
     }
+    cache.set_json(cache_key, payload, ttl=TTL_AI_PAYLOAD)
+    return payload
 
 
 async def run_course_advice(
@@ -163,7 +181,9 @@ async def run_course_advice(
 
     ai_result = {overview, recommendations, warnings, suggestions, notes}.
     """
-    payload = build_course_advice_payload(db, student_id, target_year, target_term)
+    payload = await anyio.to_thread.run_sync(
+        build_course_advice_payload, db, student_id, target_year, target_term
+    )
     open_ids = {c["class_id"] for c in payload["open_course_classes"]}
     eligible = [c for c in payload["open_course_classes"] if c["eligible"]]
 
@@ -201,7 +221,7 @@ async def run_course_advice(
 
 async def run_study_summary(db: Session, student_id: int) -> tuple[dict, bool]:
     """Trả về (ai_result, fallback); ai_result = {summary, warnings, suggestions}."""
-    payload = build_study_summary_payload(db, student_id)
+    payload = await anyio.to_thread.run_sync(build_study_summary_payload, db, student_id)
     try:
         result = await call_llm_json(build_study_summary_prompt(payload))
         return (
@@ -309,51 +329,61 @@ async def run_class_overview(db: Session, homeroom_id: int) -> dict:
     càng không tên/MSSV. AI chỉ diễn giải ở mức lớp; mọi con số hiển thị
     (stats) do server tự tính — không tin output AI.
     """
-    students = db.scalars(
-        select(Student).where(Student.class_id == homeroom_id).order_by(Student.id)
-    ).all()
-    by_student = _class_score_rows(db, homeroom_id)
+    # Số liệu tổng hợp cache TTL_AI_PAYLOAD — _class_score_rows là join 4 bảng
+    # trên toàn lớp. LLM vẫn được gọi MỖI lần (câu chữ luôn mới, chỉ số liệu cache).
+    cache_key = f"aipayload:overview:{homeroom_id}"
+    cached = await anyio.to_thread.run_sync(cache.get_json, cache_key)
+    if cached is not None:
+        stats, payload = cached["stats"], cached["payload"]
+    else:
+        students = db.scalars(
+            select(Student).where(Student.class_id == homeroom_id).order_by(Student.id)
+        ).all()
+        by_student = _class_score_rows(db, homeroom_id)
 
-    metrics = [_student_metrics(by_student.get(s.id, [])) for s in students]
-    graded = [m for m in metrics if m["gpa4"] is not None]
-    risk_counts = {"high": 0, "medium": 0, "low": 0}
-    for m in metrics:
-        level = _risk_level(m)
-        if level:
-            risk_counts[level] += 1
+        metrics = [_student_metrics(by_student.get(s.id, [])) for s in students]
+        graded = [m for m in metrics if m["gpa4"] is not None]
+        risk_counts = {"high": 0, "medium": 0, "low": 0}
+        for m in metrics:
+            level = _risk_level(m)
+            if level:
+                risk_counts[level] += 1
 
-    stats = {
-        "class_size": len(students),
-        "students_with_grades": len(graded),
-        "students_without_grades": len(students) - len(graded),
-        "avg_gpa4": (
-            round(sum(m["gpa4"] for m in graded) / len(graded), 2) if graded else None
-        ),
-        "avg_gpa10": (
-            round(sum(m["gpa10"] for m in graded) / len(graded), 2) if graded else None
-        ),
-        "risk_counts": risk_counts,
-    }
+        stats = {
+            "class_size": len(students),
+            "students_with_grades": len(graded),
+            "students_without_grades": len(students) - len(graded),
+            "avg_gpa4": (
+                round(sum(m["gpa4"] for m in graded) / len(graded), 2) if graded else None
+            ),
+            "avg_gpa10": (
+                round(sum(m["gpa10"] for m in graded) / len(graded), 2) if graded else None
+            ),
+            "risk_counts": risk_counts,
+        }
 
-    # Payload tổng hợp: đủ màu để nhận xét điểm mạnh/yếu nhưng không đếm xấu ai
-    payload = {
-        **stats,
-        "highest_gpa4": max((m["gpa4"] for m in graded), default=None),
-        "lowest_gpa4": min((m["gpa4"] for m in graded), default=None),
-        "total_failed_courses": sum(m["failed_count"] for m in metrics),
-        "students_with_failed_courses": sum(1 for m in metrics if m["failed_count"] > 0),
-        "avg_accumulated_credits": (
-            round(sum(m["accumulated_credits"] for m in graded) / len(graded), 1)
-            if graded
-            else None
-        ),
-        "students_declining": sum(
-            1 for m in metrics if m["trend"] is not None and m["trend"] <= RISK_TREND_DROP
-        ),
-        "students_improving": sum(
-            1 for m in metrics if m["trend"] is not None and m["trend"] >= RISK_TREND_RISE
-        ),
-    }
+        # Payload tổng hợp: đủ màu để nhận xét điểm mạnh/yếu nhưng không đếm xấu ai
+        payload = {
+            **stats,
+            "highest_gpa4": max((m["gpa4"] for m in graded), default=None),
+            "lowest_gpa4": min((m["gpa4"] for m in graded), default=None),
+            "total_failed_courses": sum(m["failed_count"] for m in metrics),
+            "students_with_failed_courses": sum(1 for m in metrics if m["failed_count"] > 0),
+            "avg_accumulated_credits": (
+                round(sum(m["accumulated_credits"] for m in graded) / len(graded), 1)
+                if graded
+                else None
+            ),
+            "students_declining": sum(
+                1 for m in metrics if m["trend"] is not None and m["trend"] <= RISK_TREND_DROP
+            ),
+            "students_improving": sum(
+                1 for m in metrics if m["trend"] is not None and m["trend"] >= RISK_TREND_RISE
+            ),
+        }
+        await anyio.to_thread.run_sync(
+            cache.set_json, cache_key, {"stats": stats, "payload": payload}, TTL_AI_PAYLOAD
+        )
 
     try:
         result = await call_llm_json(build_class_overview_prompt(payload))

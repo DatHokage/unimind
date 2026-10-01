@@ -81,7 +81,6 @@ export default function App() {
                 <Route index element={<StudentDashboard />} />
                 <Route path="schedule" element={<SchedulePage />} />
                 <Route path="register" element={<RegistrationPage />} />
-                <Route path="advice" element={<RegistrationPage />} />
                 <Route path="enrollments" element={<MyEnrollmentsPage />} />
                 <Route path="grades" element={<GradesPage />} />
                 <Route path="chat" element={<RegulationChatPage />} />

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.cache import invalidate_homeroom_rosters, invalidate_student_caches
 from app.core.database import get_db
 from app.dependencies.auth_dependency import get_current_user, get_target_student, require_role
 from app.models import Enrollment, HomeroomClass, Major, Student
@@ -82,6 +83,8 @@ def create_student(
         create_user_account(db, body.account.username, body.account.password, "student", student_id=student.id)
     db.commit()
     db.refresh(student)
+    # SV mới vào lớp → danh sách lớp HC (đếm SV) + nhận xét AI lớp phải nạp lại
+    invalidate_homeroom_rosters()
     return _student_out(db, student)
 
 
@@ -122,6 +125,7 @@ def update_student(
         setattr(student, field, value)
     db.commit()
     db.refresh(student)
+    invalidate_student_caches(student.id)
     return _student_out(db, student)
 
 
@@ -145,4 +149,5 @@ def delete_student(
         )
     db.delete(student)
     db.commit()
+    invalidate_student_caches(student.id)
     return {"detail": f"Đã xóa sinh viên {student.code}"}

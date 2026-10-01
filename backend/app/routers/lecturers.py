@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.cache import TTL_CATALOG, build_key, invalidate_catalog, cache
 from app.core.database import get_db
 from app.dependencies.auth_dependency import require_role
 from app.models import CourseClass, Lecturer
@@ -53,8 +55,18 @@ def list_all_lecturers(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office", "lecturer")),
 ):
-    """Toàn bộ giảng viên (không phân trang) — chỉ dùng cho dropdown/select của form."""
-    return db.scalars(select(Lecturer).order_by(Lecturer.code)).all()
+    """Toàn bộ giảng viên (không phân trang) — chỉ dùng cho dropdown/select của form.
+
+    Cache-aside TTL_CATALOG; CRUD giảng viên gọi invalidate_catalog().
+    """
+    key = build_key("cat", "lecturers", "all")
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
+    lecturers = db.scalars(select(Lecturer).order_by(Lecturer.code)).all()
+    payload = jsonable_encoder(lecturers)
+    cache.set_json(key, payload, ttl=TTL_CATALOG)
+    return payload
 
 
 @router.post("", response_model=LecturerOut, status_code=201)
@@ -84,6 +96,7 @@ def create_lecturer(
         )
     db.commit()
     db.refresh(lecturer)
+    invalidate_catalog()
     return lecturer
 
 
@@ -103,6 +116,7 @@ def update_lecturer(
         setattr(lecturer, field, value)
     db.commit()
     db.refresh(lecturer)
+    invalidate_catalog()
     return lecturer
 
 
@@ -123,4 +137,5 @@ def delete_lecturer(
         )
     db.delete(lecturer)
     db.commit()
+    invalidate_catalog()
     return {"detail": f"Đã xóa giảng viên {lecturer.code}"}

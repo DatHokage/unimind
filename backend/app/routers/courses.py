@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.cache import TTL_CATALOG, build_key, invalidate_catalog, cache
 from app.core.database import get_db
 from app.dependencies.auth_dependency import require_role
 from app.models import Course, CourseClass, Prerequisite
@@ -67,9 +69,20 @@ def list_all_courses(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office", "advisor", "lecturer", "student")),
 ):
-    """Toàn bộ học phần (không phân trang) — chỉ dùng cho dropdown/select của form."""
+    """Toàn bộ học phần (không phân trang) — chỉ dùng cho dropdown/select của form.
+
+    Cache-aside TTL_CATALOG — catalog môn học gần như tĩnh, đổi qua CRUD học
+    phần thì invalidate_catalog() xóa nhóm cat: (kèm cc: vì tên/prereq hiển thị
+    trong danh sách lớp).
+    """
+    key = build_key("cat", "courses", "all")
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
     courses = db.scalars(select(Course).order_by(Course.code)).all()
-    return [_course_out(db, c) for c in courses]
+    payload = jsonable_encoder([_course_out(db, c) for c in courses])
+    cache.set_json(key, payload, ttl=TTL_CATALOG)
+    return payload
 
 
 @router.post("", response_model=CourseOut, status_code=201)
@@ -91,6 +104,7 @@ def create_course(
     attach_prerequisites(db, course, body.prerequisite_course_ids)
     db.commit()
     db.refresh(course)
+    invalidate_catalog()
     return _course_out(db, course)
 
 
@@ -114,6 +128,7 @@ def update_course(
         attach_prerequisites(db, course, data["prerequisite_course_ids"])
     db.commit()
     db.refresh(course)
+    invalidate_catalog()
     return _course_out(db, course)
 
 
@@ -139,4 +154,5 @@ def delete_course(
     ).delete(synchronize_session=False)
     db.delete(course)
     db.commit()
+    invalidate_catalog()
     return {"detail": f"Đã xóa học phần {course.code}"}

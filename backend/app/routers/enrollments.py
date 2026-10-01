@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.cache import TTL_STUDENT, build_key, cache, invalidate_after_enrollment_change
 from app.core.database import get_db
 from app.dependencies.auth_dependency import get_current_user, get_target_student, require_role
 from app.models import Enrollment, Student
@@ -56,6 +58,9 @@ def enroll(
         if student_id is None or db.get(Student, student_id) is None:
             raise HTTPException(status_code=403, detail="Tài khoản chưa gắn hồ sơ sinh viên")
     enrollment = create_enrollment(db, student_id, body.course_class_id)
+    # Invalidate SAU khi create_enrollment đã commit — không đụng cache trong
+    # vùng FOR UPDATE (sĩ số trong transaction luôn đọc thẳng DB).
+    invalidate_after_enrollment_change(student_id, body.course_class_id)
     return _enrollment_out(db, enrollment)
 
 
@@ -78,6 +83,7 @@ def cancel_enrollment(
     if grade is not None:
         db.delete(grade)
     db.commit()
+    invalidate_after_enrollment_change(enrollment.student_id, enrollment.course_class_id)
     return {"detail": "Đã hủy đăng ký"}
 
 
@@ -87,11 +93,20 @@ def list_student_enrollments(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """Lịch sử đăng ký của 1 sinh viên — chính SV, advisor phụ trách, training_office."""
+    """Lịch sử đăng ký của 1 sinh viên — chính SV, advisor phụ trách, training_office.
+
+    Cache TTL_STUDENT theo student_id; POST/DELETE đăng ký xóa đích danh.
+    """
     get_target_student(db, user, student_id)
+    cache_key = build_key("enr", "stu", student_id)
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
     enrollments = db.scalars(
         select(Enrollment)
         .where(Enrollment.student_id == student_id)
         .order_by(Enrollment.enrolled_at.desc())
     ).all()
-    return [_enrollment_out(db, e) for e in enrollments]
+    payload = jsonable_encoder([_enrollment_out(db, e) for e in enrollments])
+    cache.set_json(cache_key, payload, ttl=TTL_STUDENT)
+    return payload

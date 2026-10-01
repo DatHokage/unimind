@@ -1,7 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.cache import (
+    TTL_CATALOG,
+    build_key,
+    cache,
+    invalidate_homeroom_rosters,
+)
 from app.core.database import get_db
 from app.dependencies.auth_dependency import (
     advisor_identity,
@@ -97,9 +104,19 @@ def list_all_homeroom_classes(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office")),
 ):
-    """Toàn bộ lớp hành chính (không phân trang) — chỉ dùng cho dropdown/select của form."""
+    """Toàn bộ lớp hành chính (không phân trang) — chỉ dùng cho dropdown/select của form.
+
+    Cache-aside TTL_CATALOG —/_homeroom_out đếm sinh viên từng lớp (N query)
+    nên cache càng có giá trị; CRUD lớp gọi invalidate_homeroom_rosters().
+    """
+    key = build_key("cat", "homerooms", "all")
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
     hcs = db.scalars(select(HomeroomClass).order_by(HomeroomClass.name)).all()
-    return [_homeroom_out(db, hc) for hc in hcs]
+    payload = jsonable_encoder([_homeroom_out(db, hc) for hc in hcs])
+    cache.set_json(key, payload, ttl=TTL_CATALOG)
+    return payload
 
 
 @router.get("/mine", response_model=list[HomeroomClassOut])
@@ -107,13 +124,23 @@ def my_homeroom_classes(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("advisor")),
 ):
-    """Cố vấn liệt kê các lớp hành chính mình phụ trách."""
+    """Cố vấn liệt kê các lớp hành chính mình phụ trách.
+
+    Cache theo advisor_id — đổi phân công (CRUD lớp/cố vấn) thì invalidate_homeroom_rosters().
+    """
+    advisor_id = advisor_identity(user)
+    key = build_key("cat", "homerooms", "mine", advisor_id)
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
     hcs = db.scalars(
         select(HomeroomClass)
-        .where(HomeroomClass.advisor_id == advisor_identity(user))
+        .where(HomeroomClass.advisor_id == advisor_id)
         .order_by(HomeroomClass.name)
     ).all()
-    return [_homeroom_out(db, hc) for hc in hcs]
+    payload = jsonable_encoder([_homeroom_out(db, hc) for hc in hcs])
+    cache.set_json(key, payload, ttl=TTL_CATALOG)
+    return payload
 
 
 @router.post("", response_model=HomeroomClassOut, status_code=201)
@@ -134,6 +161,7 @@ def create_homeroom_class(
     db.add(hc)
     db.commit()
     db.refresh(hc)
+    invalidate_homeroom_rosters()
     return _homeroom_out(db, hc)
 
 
@@ -163,6 +191,7 @@ def update_homeroom_class(
         setattr(hc, field, value)
     db.commit()
     db.refresh(hc)
+    invalidate_homeroom_rosters()
     return _homeroom_out(db, hc)
 
 
@@ -185,6 +214,7 @@ def delete_homeroom_class(
         )
     db.delete(hc)
     db.commit()
+    invalidate_homeroom_rosters()
     return {"detail": f"Đã xóa lớp hành chính {hc.name}"}
 
 

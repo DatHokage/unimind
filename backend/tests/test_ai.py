@@ -291,23 +291,26 @@ def test_extract_json_variants():
         extract_json("không có json nào cả")
 
 
-@pytest.mark.anyio
-async def test_call_llm_text_openrouter_success_no_gemini(monkeypatch):
-    """OpenRouter (chính) thành công → trả ngay, KHÔNG gọi sang Gemini."""
-    from app.core.config import settings
+# ---------- Helper chung cho test LLM (mock httpx / mock tầng gọi provider) ----------
+
+class _FakeResponse:
+    def __init__(self, data=None, status=200, text=""):
+        self._data = data
+        self.status_code = status
+        self.text = text
+
+    def json(self):
+        return self._data
+
+
+def _patch_httpx(monkeypatch, handler):
+    """Thay httpx.AsyncClient bằng bản giả; handler(url, body) -> _FakeResponse.
+
+    Trả list các cặp (url, body) đã gửi để test kiểm tra tham số thực tế.
+    """
     from app.services import llm_service
 
     calls = []
-    openrouter_ok = {"choices": [{"message": {"content": "tra loi tu openrouter"}}]}
-
-    class _FakeResponse:
-        def __init__(self, data, status=200, text=""):
-            self._data = data
-            self.status_code = status
-            self.text = text
-
-        def json(self):
-            return self._data
 
     class _FakeClient:
         def __init__(self, **kwargs):
@@ -320,69 +323,71 @@ async def test_call_llm_text_openrouter_success_no_gemini(monkeypatch):
             return False
 
         async def post(self, url, **kwargs):
-            calls.append(url)
-            return _FakeResponse(openrouter_ok)
+            body = kwargs.get("json")
+            calls.append((url, body))
+            return handler(url, body)
 
-    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "test-or-key")
-    monkeypatch.setattr(settings, "GOOGLE_API_KEY", "test-gemini-key")
     monkeypatch.setattr(llm_service.httpx, "AsyncClient", _FakeClient)
+    return calls
+
+
+def _patch_chat(monkeypatch, calls, fail_openrouter=False):
+    """Thay _call_chat_text — ghi lại (provider, model) từng lượt gọi.
+
+    fail_openrouter=True giả lập OpenRouter rate-limit để test đường fallback.
+    """
+    from app.core.config import settings
+    from app.services import llm_service
+
+    async def fake_chat(provider, prompt, system="", model=""):
+        calls.append((provider, model))
+        if fail_openrouter and provider == "openrouter":
+            raise llm_service.LLMError("429 rate limited")
+        return "ok", provider, model or settings.GEMINI_MODEL
+
+    monkeypatch.setattr(llm_service, "_call_chat_text", fake_chat)
+
+
+@pytest.mark.anyio
+async def test_call_llm_text_default_is_gemini_then_openrouter(monkeypatch):
+    """Không chọn model → Gemini (mặc định) chạy trước, OpenRouter là dự phòng."""
+    from app.core.config import settings
+    from app.services import llm_service
+
+    calls = []
+    _patch_chat(monkeypatch, calls)
+
+    text, provider, model = await llm_service.call_llm_text("hi")
+    assert calls == [("gemini", "")]
+    assert provider == "gemini"
+    assert model == settings.GEMINI_MODEL
+
+
+@pytest.mark.anyio
+async def test_call_llm_text_gemini_error_falls_back_openrouter(monkeypatch):
+    """Gemini (mặc định) bị rate-limit 429 → tự fallback sang OpenRouter,
+    không để lỗi lan tới người dùng khi còn phương án dự phòng."""
+    from app.core.config import settings
+    from app.services import llm_service
+
+    ok = {"choices": [{"message": {"content": "tra loi tu openrouter"}}]}
+
+    def handler(url, body):
+        if "generativelanguage" in url:
+            return _FakeResponse(status=429, text="rate limited")
+        return _FakeResponse(ok)
+
+    calls = _patch_httpx(monkeypatch, handler)
+    monkeypatch.setattr(settings, "GOOGLE_API_KEY", "test-gemini-key")
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "test-or-key")
 
     text, provider, model = await llm_service.call_llm_text("hi")
     assert text == "tra loi tu openrouter"
     assert provider == "openrouter"
     assert model == settings.OPENROUTER_MODEL
-    # Chỉ 1 cuộc gọi — OpenRouter thành công là dừng, không đụng tới Gemini
-    assert len(calls) == 1
-    assert "openrouter" in calls[0]
-
-
-@pytest.mark.anyio
-async def test_call_llm_text_openrouter_error_falls_back_gemini(monkeypatch):
-    """OpenRouter (chính) bị rate-limit 429 → tự fallback sang Gemini,
-    không để lỗi lan tới người dùng khi còn phương án dự phòng."""
-    from app.core.config import settings
-    from app.services import llm_service
-
-    gemini_ok = {"candidates": [{"finishReason": "STOP",
-                                 "content": {"parts": [{"text": "tra loi tu gemini"}]}}]}
-    calls = []
-
-    class _FakeResponse:
-        def __init__(self, data=None, status=200, text=""):
-            self._data = data
-            self.status_code = status
-            self.text = text
-
-        def json(self):
-            return self._data
-
-    class _FakeClient:
-        def __init__(self, **kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return False
-
-        async def post(self, url, **kwargs):
-            calls.append(url)
-            if "openrouter" in url:
-                return _FakeResponse(status=429, text="rate limited")
-            return _FakeResponse(gemini_ok)
-
-    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "test-or-key")
-    monkeypatch.setattr(settings, "GOOGLE_API_KEY", "test-gemini-key")
-    monkeypatch.setattr(llm_service.httpx, "AsyncClient", _FakeClient)
-
-    text, provider, model = await llm_service.call_llm_text("hi")
-    assert text == "tra loi tu gemini"
-    assert provider == "gemini"
-    assert model == settings.GEMINI_MODEL
-    assert len(calls) == 2  # openrouter 429 -> gọi tiếp gemini
-    assert "openrouter" in calls[0]
-    assert "generativelanguage" in calls[1]
+    assert len(calls) == 2  # gemini 429 -> gọi tiếp openrouter
+    assert "generativelanguage" in calls[0][0]
+    assert "openrouter" in calls[1][0]
 
 
 @pytest.mark.anyio
@@ -390,13 +395,99 @@ async def test_call_llm_text_both_fail_raises(monkeypatch):
     """Cả OpenRouter lẫn Gemini đều lỗi → LLMError (không crash 500)."""
     from app.services import llm_service
 
-    async def broken(provider, prompt, system=""):
+    async def broken(provider, prompt, system="", model=""):
         raise llm_service.LLMError(f"{provider}: loi")
 
     monkeypatch.setattr(llm_service, "_call_chat_text", broken)
 
-    with pytest.raises(LLMError, match="openrouter.*gemini"):
+    with pytest.raises(LLMError, match="gemini.*openrouter"):
         await llm_service.call_llm_text("hi")
+
+
+@pytest.mark.anyio
+async def test_call_llm_text_uses_selected_model(monkeypatch):
+    """Model client chọn ở dropdown phải được gửi lên API, không rơi về .env."""
+    from app.core.config import settings
+    from app.services import llm_service
+
+    ok = {"choices": [{"message": {"content": "ok"}}]}
+    calls = _patch_httpx(monkeypatch, lambda url, body: _FakeResponse(ok))
+
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "test-or-key")
+    monkeypatch.setattr(settings, "OPENROUTER_MODEL", "env-default:free")
+
+    text, provider, model = await llm_service.call_llm_text(
+        "hi", provider="openrouter", model="nvidia/picked-model:free")
+
+    assert calls[0][1]["model"] == "nvidia/picked-model:free"
+    assert model == "nvidia/picked-model:free"
+    assert provider == "openrouter"
+
+
+@pytest.mark.anyio
+async def test_call_llm_text_selected_gemini_runs_first(monkeypatch):
+    """Chọn Gemini → Gemini gọi TRƯỚC (không phải OpenRouter như mặc định)."""
+    from app.services import llm_service
+
+    calls = []
+    _patch_chat(monkeypatch, calls)
+
+    text, provider, model = await llm_service.call_llm_text(
+        "hi", provider="gemini", model="gemini-3.6-flash")
+
+    assert calls == [("gemini", "gemini-3.6-flash")]
+    assert provider == "gemini"
+    assert model == "gemini-3.6-flash"
+
+
+@pytest.mark.anyio
+async def test_call_llm_text_fallback_uses_env_model_not_selected(monkeypatch):
+    """Model được chọn lỗi → provider dự phòng dùng model trong .env, KHÔNG
+    dùng lại model id của provider kia (id thuộc không gian tên khác)."""
+    from app.core.config import settings
+    from app.services import llm_service
+
+    monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-env-default")
+    calls = []
+    _patch_chat(monkeypatch, calls, fail_openrouter=True)
+
+    text, provider, model = await llm_service.call_llm_text(
+        "hi", provider="openrouter", model="nvidia/picked:free")
+
+    assert calls == [("openrouter", "nvidia/picked:free"), ("gemini", "")]
+    assert provider == "gemini"
+    assert model == "gemini-env-default"
+
+
+@pytest.mark.anyio
+async def test_stream_llm_text_selected_gemini_runs_first(monkeypatch):
+    """Bản streaming dùng CHUNG quy tắc chọn model với bản thường — đường đi
+    thực tế của web (POST /ai/regulation-chat/stream) trước đây không có test."""
+    from app.core.config import settings
+    from app.services import llm_service
+
+    calls = []
+
+    def make_fake(label):
+        async def fake_stream(prompt, system="", info=None, model=""):
+            calls.append((label, model))
+            if info is not None:
+                info.update(provider=label, model=model or settings.GEMINI_MODEL)
+            yield "ok"
+        return fake_stream
+
+    monkeypatch.setattr(llm_service, "_stream_openrouter_text", make_fake("openrouter"))
+    monkeypatch.setattr(llm_service, "_stream_gemini_text", make_fake("gemini"))
+
+    info = {}
+    chunks = [
+        c async for c in llm_service.stream_llm_text(
+            "hi", info=info, provider="gemini", model="gemini-3.6-flash")
+    ]
+
+    assert chunks == ["ok"]
+    assert calls == [("gemini", "gemini-3.6-flash")]
+    assert info == {"provider": "gemini", "model": "gemini-3.6-flash"}
 
 
 # ---------- Pipeline RAG (mock collection + mock LLM, không gọi API thật) ----------
@@ -426,7 +517,7 @@ def _patch_pipeline(monkeypatch, collection, llm_text=None, embedding=None):
 
     fake_get_embedding.last_input_type = None
 
-    async def fake_call_llm_text(prompt, system=""):
+    async def fake_call_llm_text(prompt, system="", provider="", model=""):
         # Mặc định OpenRouter — LLM chính của chatbot quy chế (Voyage chỉ embed)
         return llm_text(prompt, system) if llm_text else (
             "trả lời mẫu", "openrouter", "test-model:free")
@@ -479,9 +570,70 @@ async def test_answer_regulation_question_in_scope(monkeypatch):
     # Vector truyền tường minh — tuyệt đối không để Chroma tự nhúng văn bản
     assert "query_embeddings" in collection.last_kwargs
     assert "query_texts" not in collection.last_kwargs
-    # Lịch sử hội thoại được lưu server-side
-    assert ("t-in-scope", "", "") in rag_service._sessions
-    rag_service._sessions.clear()
+    # Lịch sử hội thoại được lưu server-side (qua cache — app/core/cache.py)
+    from app.core.cache import build_key, cache
+    assert cache.get_json(build_key("chat", "t-in-scope", "", "")) is not None
+
+
+@pytest.mark.anyio
+async def test_answer_regulation_question_filters_irrelevant_sources(monkeypatch):
+    """Chào hỏi / câu ngoài phạm vi: top-k vẫn trả đủ 5 chunk nhưng tất cả đều
+    vượt ngưỡng tương đồng -> KHÔNG hiện nguồn trích dẫn.
+
+    LLM VẪN được gọi: câu trả lời (chào lại, hoặc báo không tìm thấy) do model
+    tự sinh theo quy tắc 3 của SYSTEM_PROMPT — server chỉ lọc khối nguồn,
+    không ép câu chữ.
+    """
+    texts = [f"chunk {i}" for i in range(5)]
+    metas = [{"dieu": f"Điều {i}", "so_trang": i} for i in range(5)]
+    collection = _FakeCollection({
+        "documents": [texts], "metadatas": [metas],
+        "distances": [[0.70, 0.71, 0.72, 0.72, 0.72]],   # đều > ngưỡng 0.65
+    })
+    calls = {"n": 0}
+
+    def fake_llm(prompt, system):
+        calls["n"] += 1
+        return ("Chào bạn! Mình là trợ lý tra cứu quy chế.",
+                "gemini", "gemini-3.6-flash")
+
+    ctx = _patch_pipeline(monkeypatch, collection, llm_text=fake_llm)
+    rag_service = ctx["rag_service"]
+
+    result = await rag_service.answer_regulation_question(
+        "xin chào", session_id="t-greet")
+
+    assert result["sources"] == []
+    assert result["answer"].startswith("Chào bạn")
+    assert calls["n"] == 1        # LLM vẫn trả lời, chỉ khối nguồn bị lọc
+    # distances phải được yêu cầu từ Chroma — đó là dữ liệu để lọc
+    assert "distances" in collection.last_kwargs["include"]
+
+
+@pytest.mark.anyio
+async def test_answer_regulation_question_keeps_only_close_chunks(monkeypatch):
+    """Lọc theo TỪNG chunk: chỉ chunk đạt ngưỡng vào khối trích dẫn, phần còn
+    lại vẫn nằm nguyên trong ngữ cảnh gửi LLM (không cắt bớt thông tin model)."""
+    texts = [f"chunk {i}" for i in range(5)]
+    metas = [{"dieu": f"Điều {i}", "so_trang": i} for i in range(5)]
+    collection = _FakeCollection({
+        "documents": [texts], "metadatas": [metas],
+        "distances": [[0.30, 0.40, 0.55, 0.70, 0.75]],   # 3 chunk đầu đạt ngưỡng
+    })
+
+    def fake_llm(prompt, system):
+        # Ngữ cảnh vẫn đủ 5 chunk dù chỉ 3 chunk được trích dẫn
+        for i in range(5):
+            assert f"chunk {i}" in system
+        return ("trả lời mẫu", "openrouter", "test-model:free")
+
+    ctx = _patch_pipeline(monkeypatch, collection, llm_text=fake_llm)
+    rag_service = ctx["rag_service"]
+
+    result = await rag_service.answer_regulation_question(
+        "Điều kiện xét học bổng khuyến khích học tập?", session_id="t-partial")
+
+    assert [s["dieu"] for s in result["sources"]] == ["Điều 0", "Điều 1", "Điều 2"]
 
 
 @pytest.mark.anyio
@@ -503,7 +655,6 @@ async def test_answer_regulation_question_out_of_scope_no_llm(monkeypatch):
     assert result["answer"] == "Toi khong tim thay thong tin nay trong quy che."
     assert result["sources"] == []
     assert called["n"] == 0
-    rag_service._sessions.clear()
 
 
 @pytest.mark.anyio

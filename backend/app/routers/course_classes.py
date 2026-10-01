@@ -1,7 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.cache import (
+    TTL_CLASS_LIST,
+    TTL_TERM,
+    build_key,
+    cache,
+    invalidate_class_caches,
+)
 from app.core.database import get_db
 from app.dependencies.auth_dependency import require_role
 from app.models import Course, CourseClass, CourseClassSession, Enrollment, Grade, Lecturer
@@ -103,7 +111,17 @@ def list_course_classes(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office", "lecturer", "student")),
 ):
-    """Danh sách lớp học phần phân trang phía server — chỉ query đúng các bản ghi của trang hiện tại."""
+    """Danh sách lớp học phần phân trang phía server — chỉ query đúng các bản ghi của trang hiện tại.
+
+    Cache TTL_CLASS_LIST (60s): _course_class_out chạy ~4 query/lớp (sĩ số,
+    tiên quyết, mã lớp) nên đây là N+1 lớn nhất app. TTL ngắn vì sĩ số đổi theo
+    đăng ký; CRUD lớp + đăng ký đều có invalidate tương ứng.
+    """
+    cache_key = build_key("cc", "list", term or 0, year or 0, status or "",
+                          course_id or 0, lecturer_id or 0, search or "", page, size)
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
     stmt = select(CourseClass)
     if term is not None:
         stmt = stmt.where(CourseClass.term == term)
@@ -134,13 +152,19 @@ def list_course_classes(
         .offset(page * size)
         .limit(size)
     ).all()
-    return CourseClassPage(
-        data=[_course_class_out(db, cc) for cc in classes],
-        page=page,
-        size=size,
-        totalElements=total,
-        totalPages=(total + size - 1) // size,
+    payload = jsonable_encoder(
+        CourseClassPage(
+            data=[_course_class_out(db, cc) for cc in classes],
+            page=page,
+            size=size,
+            totalElements=total,
+            totalPages=(total + size - 1) // size,
+        )
     )
+    cache.set_json(
+        cache_key,
+        payload, ttl=TTL_CLASS_LIST)
+    return payload
 
 
 @router.get("/all", response_model=list[CourseClassOut])
@@ -152,7 +176,17 @@ def list_all_course_classes(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office", "lecturer", "student")),
 ):
-    """Toàn bộ lớp học phần (không phân trang) — chỉ dùng cho dropdown/select và trang đăng ký."""
+    """Toàn bộ lớp học phần (không phân trang) — chỉ dùng cho dropdown/select và trang đăng ký.
+
+    Cache TTL_CLASS_LIST — trang đăng ký gọi endpoint này mỗi lần mở; TTL ngắn
+    để sĩ số hiển thị không trễ quá 1 phút (chính xác tuyệt đối vẫn do FOR
+    UPDATE ở tầng DB khi POST /enrollments đảm nhiệm).
+    """
+    cache_key = build_key("cc", "all", term or 0, year or 0, status or "",
+                          course_id or 0)
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
     stmt = select(CourseClass)
     if term is not None:
         stmt = stmt.where(CourseClass.term == term)
@@ -163,7 +197,9 @@ def list_all_course_classes(
     if course_id is not None:
         stmt = stmt.where(CourseClass.course_id == course_id)
     classes = db.scalars(stmt.order_by(CourseClass.year, CourseClass.term, CourseClass.id)).all()
-    return [_course_class_out(db, cc) for cc in classes]
+    payload = jsonable_encoder([_course_class_out(db, cc) for cc in classes])
+    cache.set_json(cache_key, payload, ttl=TTL_CLASS_LIST)
+    return payload
 
 
 @router.get("/mine", response_model=list[CourseClassOut])
@@ -189,16 +225,27 @@ def get_current_term(
 
     Admin mở lớp kỳ mới thì "kỳ hiện tại" tự trượt sang kỳ đó — không cần cấu
     hình. Đặt route này TRƯỚC /{course_class_id} để không bị nuốt vào path param.
+
+    Cache TTL_TERM (15 phút): query nhỏ nhưng MỌI trang đều gọi; mở lớp kỳ mới
+    (CRUD lớp) thì invalidate_class_caches() xóa ngay.
     """
+    cache_key = build_key("cc", "current-term")
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
     latest = db.scalar(
         select(CourseClass)
         .order_by(CourseClass.year.desc(), CourseClass.term.desc())
         .limit(1)
     )
-    return CurrentTermOut(
-        year=latest.year if latest else None,
-        term=latest.term if latest else None,
+    payload = jsonable_encoder(
+        CurrentTermOut(
+            year=latest.year if latest else None,
+            term=latest.term if latest else None,
+        )
     )
+    cache.set_json(cache_key, payload, ttl=TTL_TERM)
+    return payload
 
 
 @router.get("/{course_class_id}", response_model=CourseClassOut)
@@ -207,7 +254,15 @@ def get_course_class(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("training_office", "lecturer", "student")),
 ):
-    return _course_class_out(db, _get_course_class_or_404(db, course_class_id))
+    """Cache TTL_CLASS_LIST theo id — xóa đích danh khi đăng ký/CRUD lớp đổi sĩ số."""
+    cache_key = build_key("cc", "item", course_class_id)
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
+    payload = jsonable_encoder(
+        _course_class_out(db, _get_course_class_or_404(db, course_class_id)))
+    cache.set_json(cache_key, payload, ttl=TTL_CLASS_LIST)
+    return payload
 
 
 @router.get("/{course_class_id}/enrollments", response_model=list[EnrollmentOut])
@@ -260,6 +315,7 @@ def create_course_class(
     db.add(cc)
     db.commit()
     db.refresh(cc)
+    invalidate_class_caches()
     return _course_class_out(db, cc)
 
 
@@ -302,6 +358,7 @@ def update_course_class(
         setattr(cc, field, value)
     db.commit()
     db.refresh(cc)
+    invalidate_class_caches()
     return _course_class_out(db, cc)
 
 
@@ -340,6 +397,7 @@ def complete_course_class(
     cc.status = "completed"
     db.commit()
     db.refresh(cc)
+    invalidate_class_caches()
     return _course_class_out(db, cc)
 
 
@@ -406,6 +464,7 @@ def set_session_override(
     cc = _get_course_class_or_404(db, course_class_id)
     _set_session_override(db, cc, seq, body)
     db.refresh(cc)
+    invalidate_class_caches()
     return _course_class_out(db, cc)
 
 
@@ -433,4 +492,5 @@ def clear_session_override(
         db.delete(ov)
         db.commit()
     db.refresh(cc)
+    invalidate_class_caches()
     return _course_class_out(db, cc)

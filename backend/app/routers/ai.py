@@ -1,4 +1,7 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -31,7 +34,9 @@ from app.services.rag_service import (
     answer_regulation_question,
     is_configured,
     list_models,
+    prepare_regulation_question,
     rag_status,
+    stream_answer_regulation_question,
 )
 
 router = APIRouter(prefix="/ai", tags=["AI"])
@@ -125,14 +130,15 @@ async def regulation_chat(
     """Chatbot hỏi-đáp quy chế (RAG): truy vấn Sổ tay sinh viên, trả lời kèm
     trích dẫn Điều / Khoản / trang. Ngữ cảnh hội thoại giữ theo session_id.
 
-    provider/model: nhận để tương thích dropdown trên web (giữ khóa lịch sử
-    theo session); model trả lời thực tế luôn theo cấu hình .env — OpenRouter,
-    lỗi tự fallback Gemini, không cần dropdown ép model như bản LangChain cũ.
+    provider/model: model người dùng chọn ở dropdown là model trả lời; lựa chọn
+    không hợp lệ (model không khả dụng) thì quay về mặc định trong .env. Khi
+    model được chọn lỗi/rate-limit, server tự fallback sang provider còn lại với
+    model mặc định — kết quả trả về provider/model THỰC TẾ đã trả lời.
     Trả 503 khi pipeline chưa sẵn sàng (chưa có vector store hoặc API key).
     """
     try:
         result = await answer_regulation_question(
-            body.question, body.session_id,
+            body.question, f"user:{user['user_id']}:{body.session_id}",
             provider=body.provider, model=body.model,
         )
     except RagNotAvailableError as e:
@@ -145,4 +151,45 @@ async def regulation_chat(
         sources=result.get("sources", []),
         provider=result.get("provider", ""),
         model=result.get("model", ""),
+    )
+
+
+@router.post("/regulation-chat/stream")
+async def regulation_chat_stream(
+    body: RegulationChatRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Bản streaming SSE của /regulation-chat — chữ chảy ra từng mảnh thay vì
+    chờ cả câu. Event (mỗi dòng `data: {json}`):
+    meta (sources) → delta* (mảnh chữ) → done (câu hoàn chỉnh + provider/model)
+    | error (LLM lỗi giữa dòng).
+
+    Chuẩn bị pipeline (embedding + retrieval + ghép prompt) chạy TRƯỚC khi trả
+    StreamingResponse — nên 503/502 vẫn là HTTP status thật, dễ xử lý phía FE.
+    """
+    try:
+        prepared = await prepare_regulation_question(
+            body.question, f"user:{user['user_id']}:{body.session_id}",
+            provider=body.provider, model=body.model,
+        )
+    except RagNotAvailableError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except RagLLMError as e:
+        raise HTTPException(status_code=502, detail=f"Chatbot quy chế gặp lỗi: {e}")
+
+    async def event_stream():
+        try:
+            async for event in stream_answer_regulation_question(prepared, body.question):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:  # phòng hờ: mọi lỗi giữa dòng thành event error
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # Không để proxy (nginx/Vercel…) gom buffer — chữ phải chảy tức thì
+            "X-Accel-Buffering": "no",
+        },
     )

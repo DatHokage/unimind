@@ -21,10 +21,13 @@ lỗi client (400/401/403...) KHÔNG retry.
 """
 
 import asyncio
+import hashlib
 import logging
 
+import anyio
 import httpx
 
+from app.core.cache import cache
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -124,10 +127,23 @@ async def get_embedding(text: str, input_type: str = "document") -> list[float]:
 
     input_type="document" khi nhúng chunk (build vector store), "query" khi
     nhúng câu hỏi user (tìm kiếm).
+
+    Cache theo hash(text) KHÔNG TTL: vector bất biến với cặp (model,
+    input_type) nên giữ vô hạn được — hỏi lặp câu cũ rất phổ biến, mỗi hit
+    tiết kiệm trọn 1 lần gọi Voyage API (quota/rate-limit). Cache best-effort
+    (app/core/cache.py): lỗi cache coi như miss, gọi API như thường; gọi cache
+    qua thread để không chặn event loop (Redis là I/O mạng).
     """
+    key = (f"emb:{settings.VOYAGE_MODEL}:{input_type}:"
+           + hashlib.sha256(text.encode("utf-8")).hexdigest())
+    cached = await anyio.to_thread.run_sync(cache.get_json, key)
+    if cached is not None:
+        return cached
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         data = await _embed_one_call(client, [text], input_type)
-    return _parse_batch(data, 1, "embed 1 text")[0]
+    vector = _parse_batch(data, 1, "embed 1 text")[0]
+    await anyio.to_thread.run_sync(cache.set_json, key, vector)
+    return vector
 
 
 async def get_embeddings(texts: list[str],

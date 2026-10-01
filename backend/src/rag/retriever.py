@@ -35,6 +35,19 @@ VECTORSTORE_DIR = os.getenv("VECTORSTORE_DIR", "vectorstore")
 # embedding_service.py (Voyage). Đổi model = phải rebuild vector store.
 EMBEDDING_MODEL = os.getenv("VOYAGE_MODEL", "") or settings.VOYAGE_MODEL
 RETRIEVER_TOP_K = int(os.getenv("RETRIEVER_TOP_K", "5"))
+# Ngưỡng cosine distance để một chunk được coi là "đáng trích dẫn" (hiển thị
+# trong khối nguồn của chatbot quy chế). Collection dùng hnsw:space=cosine nên
+# distance ∈ [0, 2]: càng lớn càng ít liên quan.
+#
+# Vì sao cần: top-k LUÔN trả đủ RETRIEVER_TOP_K chunk gần nhất, kể cả khi cả 5
+# đều không liên quan ("xin chào", câu hỏi ngoài phạm vi) — không lọc thì khối
+# trích dẫn hiện ở mọi tin nhắn.
+#
+# 0.65 chọn theo dữ liệu đo với voyage-4: câu hỏi thuộc quy chế cho chunk
+# 0.335–0.646, câu ngoài phạm vi (chào hỏi, small talk) cho 0.665–0.836.
+# Ngưỡng chỉ ảnh hưởng SỐ NGUỒN hiển thị, không ảnh hưởng câu trả lời (ngữ
+# cảnh gửi LLM vẫn là toàn bộ top-k).
+RETRIEVER_MAX_DISTANCE = float(os.getenv("RETRIEVER_MAX_DISTANCE", "0.65"))
 COLLECTION_NAME = "quy_che"
 
 

@@ -6,7 +6,7 @@ import { fmtTerm, fmtScore } from "../../utils/format";
  * và cố vấn xem bảng điểm sinh viên (components/domain, §4).
  *
  * Điểm chữ, điểm hệ 4 và kết quả Đạt/Không đạt do backend quy đổi và quyết định
- * (mục 6.8 đặc tả) — frontend chỉ hiển thị, không tự suy ra từ điểm số.
+ * (mục 6.1 đặc tả) — frontend chỉ hiển thị, không tự suy ra từ điểm số.
  */
 
 const STATUS_LABEL = { đạt: "Đạt", "không đạt": "Không đạt", "chưa có điểm": "Chưa có điểm" };

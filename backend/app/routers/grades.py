@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.cache import TTL_STUDENT, build_key, cache, invalidate_after_grade_change
 from app.core.database import get_db
 from app.dependencies.auth_dependency import get_current_user, get_target_student, require_role
-from app.models import Enrollment
+from app.models import Enrollment, Student
 from app.schemas.grade import GpaOut, GradeOut, ScoreUpdate, StudentGradeOut
 from app.services.grade_service import (
     compute_gpa,
@@ -22,6 +24,12 @@ def _get_enrollment_or_404(db: Session, enrollment_id: int) -> Enrollment:
     if enrollment is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy đăng ký")
     return enrollment
+
+
+def _homeroom_id_of(db: Session, student_id: int) -> int | None:
+    """Lớp HÀNH CHÍNH của sinh viên — key nhận xét AI lớp dùng homeroom_id,
+    không phải course_class_id (2 thực thể khác nhau, xem cache.py)."""
+    return db.scalar(select(Student.class_id).where(Student.id == student_id))
 
 
 def _grade_out(grade) -> dict:
@@ -57,6 +65,11 @@ def set_process_score(
     if course_class is None or course_class.lecturer_id != user["lecturer_id"]:
         raise HTTPException(status_code=403, detail="Không phải lớp bạn phụ trách")
     grade = update_process_score(db, enrollment_id, body.score, user["user_id"])
+    invalidate_after_grade_change(
+        enrollment.student_id,
+        enrollment.course_class_id,
+        _homeroom_id_of(db, enrollment.student_id),
+    )
     return _grade_out(grade)
 
 
@@ -68,8 +81,13 @@ def set_exam_score(
     user: dict = Depends(require_role("training_office")),
 ):
     """Nhập điểm thi — CHỈ phòng đào tạo, kể cả giảng viên dạy lớp cũng không được."""
-    _get_enrollment_or_404(db, enrollment_id)
+    enrollment = _get_enrollment_or_404(db, enrollment_id)
     grade = update_exam_score(db, enrollment_id, body.score, user["user_id"])
+    invalidate_after_grade_change(
+        enrollment.student_id,
+        enrollment.course_class_id,
+        _homeroom_id_of(db, enrollment.student_id),
+    )
     return _grade_out(grade)
 
 
@@ -79,8 +97,15 @@ def get_student_grades(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """Bảng điểm của 1 sinh viên — chính SV, advisor phụ trách, lecturer liên quan, training_office."""
+    """Bảng điểm của 1 sinh viên — chính SV, advisor phụ trách, lecturer liên quan, training_office.
+
+    Cache TTL_STUDENT theo student_id; PUT điểm xóa đích danh.
+    """
     get_target_student(db, user, student_id, allow_lecturer=True)
+    cache_key = build_key("grade", "stu", student_id)
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
     enrollments = db.scalars(
         select(Enrollment).where(Enrollment.student_id == student_id)
     ).all()
@@ -119,7 +144,9 @@ def get_student_grades(
             )
         )
     rows.sort(key=lambda r: (r.year, r.term, r.course_code))
-    return rows
+    payload = jsonable_encoder(rows)
+    cache.set_json(cache_key, payload, ttl=TTL_STUDENT)
+    return payload
 
 
 @router.get("/student/{student_id}/gpa", response_model=GpaOut)
@@ -130,10 +157,18 @@ def get_student_gpa(
 ):
     """GPA tích lũy hệ 4 + hệ 10 theo tín chỉ — backend tính, chỉ gồm HP counted_in_gpa."""
     get_target_student(db, user, student_id, allow_lecturer=True)
+    cache_key = build_key("grade", "gpa", student_id)
+    cached = cache.get_json(cache_key)
+    if cached is not None:
+        return cached
     gpa4, gpa10, credits, accumulated_credits = compute_gpa(db, student_id)
-    return GpaOut(
-        gpa4=gpa4,
-        gpa10=gpa10,
-        credits=credits,
-        accumulated_credits=accumulated_credits,
+    payload = jsonable_encoder(
+        GpaOut(
+            gpa4=gpa4,
+            gpa10=gpa10,
+            credits=credits,
+            accumulated_credits=accumulated_credits,
+        )
     )
+    cache.set_json(cache_key, payload, ttl=TTL_STUDENT)
+    return payload

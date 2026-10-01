@@ -1,8 +1,8 @@
 """
 models.py — Registry cac model LLM mien phi (OpenRouter :free + Gemini free tier).
 
-Vai tro ② trong pipeline RAG: sinh cau tra loi (khong tao vector). OpenRouter
-la lua chon chinh, Gemini la du phong — xem default_selection().
+Vai tro ② trong pipeline RAG: sinh cau tra loi (khong tao vector). Gemini la
+lua chon MAC DINH, OpenRouter :free la du phong — xem default_selection().
 
 Muc dich:
   - Tu dong lay danh sach model mien phi moi nhat tu API cong khai cua
@@ -35,10 +35,15 @@ OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 # binh thuong lay danh sach truc tiep tu API de tranh model da het mien phi.
 # Gan OPENROUTER_MODELS=oai/model1:free,org/model2:free trong .env de tu dinh nghia.
 DEFAULT_OPENROUTER_MODELS = [
-    "nvidia/nemotron-3-super-120b-a12b:free",   # mac dinh trong .env
-    "nvidia/nemotron-3.5-lightning:free",
-    "openai/gpt-oss-20b:free",
-    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "poolside/laguna-s-2.1:free",
+    "liquid/lfm-2.5-2.6b:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "nvidia/nemotron-3.5-lightning:free",        # mac dinh trong .env
+    "inclusionai/ling-3.0-flash-fin:free",
+    "inclusionai/ling-3.0-flash-sante:free",
+    "nex-agi/nex-n2.5-mini:free",
+    "thinkingmachines/inkling-small:free",
 ]
 
 # Model co :free nhung khong phai chatbot (phan loai, kiem duyet noi dung...)
@@ -141,39 +146,32 @@ def gemini_model_id() -> str:
 def list_available_models() -> list[dict]:
     """Danh sach {provider, model, label} kha dung de hien thi tren web.
 
-    Gom: toan bo model OpenRouter :free (model chinh — chi khi co key) +
-    Gemini (du phong — chi khi co key).
+    Gemini dat tren cung (mac dinh), sau do toan bo model OpenRouter :free —
+    chi hien provider nao co key trong .env.
     """
     models: list[dict] = []
+    if gemini_available():
+        gid = gemini_model_id()
+        models.append({"provider": "gemini", "model": gid,
+                       "label": f"✨ {gid} (Google — mặc định)"})
     if openrouter_available():
         for mid in get_openrouter_free_models():
             models.append({"provider": "openrouter", "model": mid,
                            "label": f"⚡ {mid}"})
-    if gemini_available():
-        gid = gemini_model_id()
-        models.append({"provider": "gemini", "model": gid,
-                       "label": f"✨ {gid} (Google — dự phòng)"})
     return models
 
 
 def default_selection() -> dict:
-    """Model mac dinh (cau hinh trong .env hoac dau danh sach kha dung).
-
-    OpenRouter la lua chon chinh (model tra loi cau hinh trong OPENROUTER_MODEL
-    — doi tu do, ke ca model :free); Gemini chi la du phong khi OpenRouter loi
-    hoac khong co key.
+    """Model mac dinh: Gemini (dat dau danh sach), khong co key thi lay
+    OpenRouter :free dau tien — giong dung thu tu hien tren dropdown.
     """
+    if gemini_available():
+        gid = gemini_model_id()
+        return {"provider": "gemini", "model": gid, "label": f"✨ {gid}"}
     if openrouter_available():
-        env_model = os.getenv("OPENROUTER_MODEL", "")
-        if env_model:
-            return {"provider": "openrouter", "model": env_model,
-                    "label": f"⚡ {env_model}"}
         free = get_openrouter_free_models()
         if free:
             return {"provider": "openrouter", "model": free[0],
                     "label": f"⚡ {free[0]}"}
-    if gemini_available():
-        gid = gemini_model_id()
-        return {"provider": "gemini", "model": gid, "label": f"✨ {gid}"}
     return {}
 
